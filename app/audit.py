@@ -1,6 +1,5 @@
 """Audit-log helper."""
 
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -9,12 +8,12 @@ from app.models import AuditLog, User
 
 def audit(
     db: Session,
-    user: Optional[User],
+    user: User | None,
     action: str,
-    resource_type: Optional[str] = None,
-    resource_id: Optional[int] = None,
+    resource_type: str | None = None,
+    resource_id: int | None = None,
     details: str = "",
-    ip: Optional[str] = None,
+    ip: str | None = None,
 ) -> None:
     log = AuditLog(
         user_id=user.id if user else None,

@@ -7,7 +7,6 @@ being honoured before its natural expiry.
 """
 import uuid
 from datetime import timedelta
-from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
@@ -46,7 +45,7 @@ def validate_password_strength(password: str) -> None:
         )
 
 
-def create_access_token(data: dict, expires: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict, expires: timedelta | None = None) -> str:
     to_encode = data.copy()
     expire = now() + (expires or timedelta(minutes=settings.access_token_expire_minutes))
     to_encode.update({"exp": expire, "jti": uuid.uuid4().hex})
@@ -55,7 +54,7 @@ def create_access_token(data: dict, expires: Optional[timedelta] = None) -> str:
 
 def get_token(
     request: Request,
-    token: Optional[str] = Depends(oauth2_scheme),
+    token: str | None = Depends(oauth2_scheme),
 ) -> str:
     """Resolve the bearer token from the Authorization header, then the auth cookie."""
     if token:
@@ -83,7 +82,7 @@ def get_current_user(token: str = Depends(get_token), db: Session = Depends(get_
         if username is None or jti is None:
             raise credentials_exception
     except JWTError:
-        raise credentials_exception
+        raise credentials_exception from None
     # Reject tokens that have been revoked (e.g. via /api/auth/logout).
     if db.query(RevokedToken).filter(RevokedToken.jti == jti).first():
         raise credentials_exception

@@ -8,8 +8,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_upgrade_head_creates_full_schema(tmp_path):
-    from alembic import command
     from alembic.config import Config
+
+    from alembic import command
 
     db_path = tmp_path / "mig.db"
     cfg = Config(str(PROJECT_ROOT / "alembic.ini"))
@@ -38,8 +39,9 @@ def test_upgrade_head_creates_full_schema(tmp_path):
 
 def test_migration_enforces_document_file_path_not_null(tmp_path):
     """Regression: the schema must mark documents.file_path NOT NULL."""
-    from alembic import command
     from alembic.config import Config
+
+    from alembic import command
 
     db_path = tmp_path / "mig.db"
     cfg = Config(str(PROJECT_ROOT / "alembic.ini"))

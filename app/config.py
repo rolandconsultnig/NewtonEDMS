@@ -2,7 +2,6 @@
 
 from functools import lru_cache
 from pathlib import Path
-from typing import List
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -29,11 +28,18 @@ class Settings(BaseSettings):
     )
     login_rate_limit: str = "5/minute"
     register_rate_limit: str = "10/hour"
+    share_rate_limit: str = "10/minute"
     password_min_length: int = 8
+    # Optional allowlist root that import-folders may watch. Empty = the import
+    # folder feature refuses new folders (arbitrary-filesystem-read guard).
+    import_root: str = ""
+    max_extract_bytes: int = 20 * 1024 * 1024
+    max_import_files_per_scan: int = 500
     seed_admin_username: str = "admin"
     seed_admin_password: str = "admin123"
     server_host: str = "0.0.0.0"
     server_port: int = 8000
+    log_level: str = "INFO"
     # Auth cookie
     cookie_name: str = "edms_token"
     cookie_secure: bool = False  # set True behind HTTPS in production
@@ -48,5 +54,5 @@ def get_settings() -> Settings:
 settings = get_settings()
 
 
-def cors_origins() -> List[str]:
+def cors_origins() -> list[str]:
     return [o.strip() for o in settings.cors_origins.split(",") if o.strip()]

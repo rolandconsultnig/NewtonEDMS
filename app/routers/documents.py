@@ -5,9 +5,8 @@ import mimetypes
 import shutil
 import uuid
 from pathlib import Path
-from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import String, cast, or_
 from sqlalchemy.orm import Session
@@ -38,10 +37,10 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 @router.get("", response_model=list[DocumentOut])
 def list_documents(
-    folder_id: Optional[int] = Query(None),
-    search: Optional[str] = Query(None),
-    tags: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
+    folder_id: int | None = Query(None),
+    search: str | None = Query(None),
+    tags: str | None = Query(None),
+    status: str | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, le=500),
     db: Session = Depends(get_db),
@@ -101,10 +100,10 @@ def _upload_one(
     user: User,
     folder: Folder,
     file: UploadFile,
-    title: Optional[str] = None,
+    title: str | None = None,
     tags: str = "",
-    metadata: Optional[dict] = None,
-    template_id: Optional[int] = None,
+    metadata: dict | None = None,
+    template_id: int | None = None,
 ) -> Document:
     meta = metadata or {}
     if template_id is not None:
@@ -159,10 +158,10 @@ def _upload_one(
 @router.post("", response_model=DocumentOut)
 def upload_document(
     folder_id: int = Form(...),
-    title: Optional[str] = Form(None),
-    tags: Optional[str] = Form(""),
-    metadata: Optional[str] = Form("{}"),
-    template_id: Optional[int] = Form(None),
+    title: str | None = Form(None),
+    tags: str | None = Form(""),
+    metadata: str | None = Form("{}"),
+    template_id: int | None = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -175,16 +174,16 @@ def upload_document(
     try:
         meta = json.loads(metadata or "{}")
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid metadata JSON")
+        raise HTTPException(status_code=400, detail="Invalid metadata JSON") from None
     return _upload_one(db, user, f, file, title=title, tags=tags, metadata=meta, template_id=template_id)
 
 
 @router.post("/bulk", response_model=list[DocumentOut])
 def bulk_upload(
     folder_id: int = Form(...),
-    tags: Optional[str] = Form(""),
-    metadata: Optional[str] = Form("{}"),
-    template_id: Optional[int] = Form(None),
+    tags: str | None = Form(""),
+    metadata: str | None = Form("{}"),
+    template_id: int | None = Form(None),
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -197,7 +196,7 @@ def bulk_upload(
     try:
         meta = json.loads(metadata or "{}")
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid metadata JSON")
+        raise HTTPException(status_code=400, detail="Invalid metadata JSON") from None
     results = []
     for file in files:
         try:
@@ -213,7 +212,7 @@ def bulk_upload(
 @router.get("/{doc_id}/download")
 def download_document(
     doc_id: int,
-    version: Optional[int] = Query(None, ge=1, alias="v"),
+    version: int | None = Query(None, ge=1, alias="v"),
     db: Session = Depends(get_db),
     request: Request = None,
     user: User = Depends(get_current_user),
@@ -274,7 +273,7 @@ def list_versions(
 @router.post("/{doc_id}/versions", response_model=DocumentOut)
 def add_version(
     doc_id: int,
-    comment: Optional[str] = Form(""),
+    comment: str | None = Form(""),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -404,10 +403,10 @@ def checkin_document(
 @router.put("/{doc_id}", response_model=DocumentOut)
 def update_document(
     doc_id: int,
-    title: Optional[str] = Form(None),
-    tags: Optional[str] = Form(None),
-    metadata: Optional[str] = Form(None),
-    status: Optional[str] = Form(None),
+    title: str | None = Form(None),
+    tags: str | None = Form(None),
+    metadata: str | None = Form(None),
+    status: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -425,7 +424,7 @@ def update_document(
         try:
             d.metadata_json = json.loads(metadata)
         except Exception:
-            raise HTTPException(status_code=400, detail="Invalid metadata JSON")
+            raise HTTPException(status_code=400, detail="Invalid metadata JSON") from None
     if status is not None:
         allowed = {
             "draft": ["review", "approved", "archived"],

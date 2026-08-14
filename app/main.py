@@ -1,9 +1,10 @@
 """FastAPI application factory: middleware, routers, lifespan, static serving."""
 
+import logging
 import warnings
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,12 +16,18 @@ from app.config import _DEV_SECRET, cors_origins, settings
 from app.database import FRONTEND_DIR
 from app.limiter import limiter
 from app.routers import audit as audit_router
-from app.routers import auth, collab, documents, extras, folders, groups, ingestion, users, workflow
+from app.routers import auth, collab, documents, extras, folders, groups, ingestion, system, users, workflow
 from app.seeding import init_db
+
+logger = logging.getLogger("newedms")
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    logging.basicConfig(
+        level=getattr(logging, settings.log_level.upper(), logging.INFO),
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    )
     init_db()
     if settings.secret_key == _DEV_SECRET:
         warnings.warn(
@@ -28,7 +35,9 @@ async def lifespan(_app: FastAPI):
             RuntimeWarning,
             stacklevel=2,
         )
+    logger.info("NewEDMS started (log_level=%s)", settings.log_level)
     yield
+    logger.info("NewEDMS shutting down")
 
 
 app = FastAPI(
@@ -52,7 +61,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Attach defensive browser headers to every response."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+    if settings.cookie_secure:
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+    return response
+
+
 # Routers
+app.include_router(system.router)
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(groups.router)

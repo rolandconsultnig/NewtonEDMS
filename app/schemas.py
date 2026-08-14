@@ -1,7 +1,7 @@
 """Pydantic request/response schemas."""
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,23 +18,23 @@ class UserOut(BaseModel):
 
     id: int
     username: str
-    email: Optional[str]
+    email: str | None
     role: str
     is_active: bool
-    created_at: Optional[datetime]
+    created_at: datetime | None
 
 
 class UserCreate(BaseModel):
     username: str
-    email: Optional[str] = ""
+    email: str | None = ""
     password: str
     role: RoleName = "user"
 
 
 class UserUpdate(BaseModel):
-    email: Optional[str] = None
-    role: Optional[RoleName] = None
-    is_active: Optional[bool] = None
+    email: str | None = None
+    role: RoleName | None = None
+    is_active: bool | None = None
 
 
 class GroupOut(BaseModel):
@@ -42,12 +42,12 @@ class GroupOut(BaseModel):
 
     id: int
     name: str
-    description: Optional[str]
+    description: str | None
 
 
 class GroupCreate(BaseModel):
     name: str
-    description: Optional[str] = ""
+    description: str | None = ""
 
 
 class FolderOut(BaseModel):
@@ -55,10 +55,10 @@ class FolderOut(BaseModel):
 
     id: int
     name: str
-    parent_id: Optional[int]
+    parent_id: int | None
     is_public: bool
     created_by: int
-    created_at: Optional[datetime]
+    created_at: datetime | None
 
 
 class FolderCreate(BaseModel):
@@ -76,14 +76,14 @@ class DocumentOut(BaseModel):
     folder_id: int
     current_version: int
     status: str
-    checked_out_by: Optional[int]
+    checked_out_by: int | None
     size: int
-    mime: Optional[str]
+    mime: str | None
     tags: str
-    metadata: Optional[dict] = Field(default_factory=dict, alias="metadata_json")
+    metadata: dict | None = Field(default_factory=dict, alias="metadata_json")
     created_by: int
-    created_at: Optional[datetime]
-    updated_at: Optional[datetime]
+    created_at: datetime | None
+    updated_at: datetime | None
 
 
 class VersionOut(BaseModel):
@@ -93,9 +93,9 @@ class VersionOut(BaseModel):
     document_id: int
     version_number: int
     size: int
-    comment: Optional[str]
+    comment: str | None
     created_by: int
-    created_at: Optional[datetime]
+    created_at: datetime | None
 
 
 class PermissionOut(BaseModel):
@@ -116,13 +116,13 @@ class AuditOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    user_id: Optional[int]
+    user_id: int | None
     action: str
-    resource_type: Optional[str]
-    resource_id: Optional[int]
-    details: Optional[str]
-    ip: Optional[str]
-    timestamp: Optional[datetime]
+    resource_type: str | None
+    resource_id: int | None
+    details: str | None
+    ip: str | None
+    timestamp: datetime | None
 
 
 class MetadataTemplateOut(BaseModel):
@@ -130,16 +130,16 @@ class MetadataTemplateOut(BaseModel):
 
     id: int
     name: str
-    description: Optional[str]
-    fields: Optional[list]
+    description: str | None
+    fields: list | None
     created_by: int
-    created_at: Optional[datetime]
+    created_at: datetime | None
 
 
 class MetadataTemplateCreate(BaseModel):
     name: str
-    description: Optional[str] = ""
-    fields: Optional[list] = []
+    description: str | None = ""
+    fields: list | None = []
 
 
 class ImportFolderOut(BaseModel):
@@ -153,8 +153,8 @@ class ImportFolderOut(BaseModel):
     recursive: bool
     delete_after_import: bool
     created_by: int
-    created_at: Optional[datetime]
-    last_scan: Optional[datetime]
+    created_at: datetime | None
+    last_scan: datetime | None
 
 
 class ImportFolderCreate(BaseModel):
@@ -182,19 +182,19 @@ class CommentOut(BaseModel):
     id: int
     document_id: int
     user_id: int
-    username: Optional[str]
+    username: str | None
     text: str
-    page: Optional[int]
-    x: Optional[int]
-    y: Optional[int]
-    created_at: Optional[datetime]
+    page: int | None
+    x: int | None
+    y: int | None
+    created_at: datetime | None
 
 
 class CommentCreate(BaseModel):
     text: str
-    page: Optional[int] = None
-    x: Optional[int] = None
-    y: Optional[int] = None
+    page: int | None = None
+    x: int | None = None
+    y: int | None = None
 
 
 class ShareLinkOut(BaseModel):
@@ -204,11 +204,11 @@ class ShareLinkOut(BaseModel):
     token: str
     document_id: int
     created_by: int
-    expires_at: Optional[datetime]
-    max_downloads: Optional[int]
+    expires_at: datetime | None
+    max_downloads: int | None
     download_count: int
-    created_at: Optional[datetime]
-    url: Optional[str]
+    created_at: datetime | None
+    url: str | None
 
 
 class RetentionPolicyOut(BaseModel):
@@ -216,16 +216,16 @@ class RetentionPolicyOut(BaseModel):
 
     id: int
     name: str
-    folder_id: Optional[int]
+    folder_id: int | None
     years: int
     action: str
     created_by: int
-    created_at: Optional[datetime]
+    created_at: datetime | None
 
 
 class RetentionPolicyCreate(BaseModel):
     name: str
-    folder_id: Optional[int] = None
+    folder_id: int | None = None
     years: int = 7
     action: str = "archive"
 
@@ -243,10 +243,10 @@ class ReportSummary(BaseModel):
 
 class WorkflowStep(BaseModel):
     name: str
-    assignee_role: Optional[str] = None
-    assignee_id: Optional[int] = None
-    due_days: Optional[int] = None
-    action: Optional[str] = "approve"
+    assignee_role: str | None = None
+    assignee_id: int | None = None
+    due_days: int | None = None
+    action: str | None = "approve"
 
 
 class WorkflowTemplateOut(BaseModel):
@@ -254,16 +254,16 @@ class WorkflowTemplateOut(BaseModel):
 
     id: int
     name: str
-    description: Optional[str]
-    steps: Optional[list]
+    description: str | None
+    steps: list | None
     created_by: int
-    created_at: Optional[datetime]
+    created_at: datetime | None
 
 
 class WorkflowTemplateCreate(BaseModel):
     name: str
-    description: Optional[str] = ""
-    steps: Optional[list] = []
+    description: str | None = ""
+    steps: list | None = []
 
 
 class WorkflowInstanceOut(BaseModel):
@@ -275,13 +275,13 @@ class WorkflowInstanceOut(BaseModel):
     status: str
     current_step: int
     created_by: int
-    created_at: Optional[datetime]
-    completed_at: Optional[datetime]
+    created_at: datetime | None
+    completed_at: datetime | None
 
 
 class TaskAction(BaseModel):
     approved: bool = True
-    comment: Optional[str] = ""
+    comment: str | None = ""
 
 
 class TaskOut(BaseModel):
@@ -291,14 +291,14 @@ class TaskOut(BaseModel):
     instance_id: int
     step_index: int
     step_name: str
-    assignee_id: Optional[int]
-    assignee_username: Optional[str]
-    document_id: Optional[int]
+    assignee_id: int | None
+    assignee_username: str | None
+    document_id: int | None
     status: str
-    comment: Optional[str]
-    due_at: Optional[datetime]
-    completed_at: Optional[datetime]
-    created_at: Optional[datetime]
+    comment: str | None
+    due_at: datetime | None
+    completed_at: datetime | None
+    created_at: datetime | None
 
 
 class NotificationOut(BaseModel):
@@ -308,15 +308,15 @@ class NotificationOut(BaseModel):
     user_id: int
     message: str
     read: bool
-    created_at: Optional[datetime]
+    created_at: datetime | None
 
 
 class CalendarEventCreate(BaseModel):
     title: str
-    description: Optional[str] = ""
+    description: str | None = ""
     start_at: datetime
-    end_at: Optional[datetime] = None
-    document_id: Optional[int] = None
+    end_at: datetime | None = None
+    document_id: int | None = None
 
 
 class CalendarEventOut(BaseModel):
@@ -324,12 +324,12 @@ class CalendarEventOut(BaseModel):
 
     id: int
     title: str
-    description: Optional[str]
+    description: str | None
     start_at: datetime
-    end_at: Optional[datetime]
-    document_id: Optional[int]
+    end_at: datetime | None
+    document_id: int | None
     created_by: int
-    created_at: Optional[datetime]
+    created_at: datetime | None
 
 
 class FacetsOut(BaseModel):

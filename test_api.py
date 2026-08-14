@@ -1,4 +1,7 @@
-import urllib.request, urllib.parse, json, os
+import json
+import os
+import urllib.parse
+import urllib.request
 
 base = 'http://localhost:8000'
 

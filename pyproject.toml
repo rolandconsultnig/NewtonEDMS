@@ -1,0 +1,25 @@
+[project]
+name = "newedms"
+version = "0.1.0"
+description = "Enterprise Document Management System (FastAPI)"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+# E/W = pycodestyle, F = pyflakes, I = import order, B = bugbear, S = bandit-lite
+select = ["E", "W", "F", "I", "B", "UP"]
+ignore = [
+    "E501",  # long lines allowed in strings/URLs; formatter handles code
+    "B008",  # FastAPI is built on function calls in argument defaults (Depends/Form/Query)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]  # asserts are fine in tests
+"tests/conftest.py" = ["E402"]  # sys.path setup before app imports
+
+[tool.bandit]
+exclude_dirs = ["tests", "alembic"]

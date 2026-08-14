@@ -7,6 +7,7 @@
     "watch:css": "tailwindcss -i ./frontend/src/input.css -o ./frontend/tailwind.css --watch"
   },
   "devDependencies": {
+    "@fortawesome/fontawesome-free": "^7.3.1",
     "tailwindcss": "^3.4.0"
   }
 }

@@ -12,15 +12,16 @@ import os
 import sys
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 
 # Make the project root importable so ``import main`` works.
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import app.models  # noqa: E402  (registers every model on Base.metadata)
 from app.config import settings  # noqa: E402
 from app.database import Base, engine  # noqa: E402
+
 config = context.config
 
 if config.config_file_name is not None:

@@ -72,6 +72,49 @@ All runtime settings are read from environment variables (prefix `EDMS_`) or a
 | `EDMS_SEED_ADMIN_USERNAME` / `EDMS_SEED_ADMIN_PASSWORD` | `admin` / `admin123` | First-boot admin seed. |
 | `EDMS_COOKIE_NAME` / `EDMS_COOKIE_SECURE` / `EDMS_COOKIE_SAMESITE` | `edms_token` / `false` / `lax` | Auth cookie. Set `SECURE=true` behind HTTPS. |
 
+## Production deployment
+
+### Quick start (Docker, single node)
+
+```powershell
+docker build -t newedms .
+docker volume create edms-data
+docker run -d --name newedms -p 8000:8000 \
+  -e EDMS_SECRET_KEY=$(openssl rand -hex 32) \
+  -e EDMS_SEED_ADMIN_PASSWORD=change-me-now \
+  -v edms-data:/data newedms
+```
+
+The container runs `alembic upgrade head` on boot and serves with uvicorn
+(1 worker — see the SQLite note below). Health probe: `GET /api/system/health`.
+
+### Production checklist
+
+- [ ] **`EDMS_SECRET_KEY`** — long random value (the app warns loudly on the default).
+- [ ] **Change the seeded admin password** immediately after first login.
+- [ ] **HTTPS** — terminate TLS at a reverse proxy, then set
+      `EDMS_COOKIE_SECURE=true` (also enables HSTS).
+- [ ] **CORS** — set `EDMS_CORS_ORIGINS` to your exact UI origin(s).
+- [ ] **Backups** — schedule `POST /api/backup` (consistent SQLite snapshot +
+      documents; keeps the last 5) and copy the zips off-host.
+- [ ] **Rate limits** — review `EDMS_LOGIN_RATE_LIMIT` / `EDMS_REGISTER_RATE_LIMIT`
+      / `EDMS_SHARE_RATE_LIMIT`.
+- [ ] **Import folders** — disabled unless `EDMS_IMPORT_ROOT` is set; point it at
+      a dedicated directory you intend to expose, never a system or app path.
+- [ ] **Email import** — consider a dedicated service account; credentials are
+      supplied per-request and never stored.
+
+### Operational notes & limits
+
+- **SQLite + local storage = single-node, single-worker.** The schema is
+  portable: set `EDMS_DATABASE_URL` to Postgres for multi-worker deployments
+  (then also move `EDMS_STORAGE_DIR` to shared/object storage).
+- Retention-policy "delete", document deletion, and import-folder scans with
+  "move" mode permanently destroy files — test policies on copies first.
+- Share links are unauthenticated URLs: they always expire (default 7 days) and
+  enforce `max_downloads` atomically, but treat every link as public.
+- Logs go to stdout (`EDMS_LOG_LEVEL`); point your collector at container logs.
+
 ## Authentication model
 
 Sessions use an **HttpOnly cookie** issued on login/register (`SameSite=Lax`).

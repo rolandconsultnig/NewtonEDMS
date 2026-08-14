@@ -15,7 +15,6 @@ from sqlalchemy.orm import relationship
 
 from app.database import Base, now
 
-
 user_groups = Table(
     "user_groups",
     Base.metadata,

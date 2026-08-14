@@ -1,6 +1,5 @@
 """Folder and folder-permission routes."""
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -17,7 +16,7 @@ router = APIRouter(prefix="/api/folders", tags=["folders"])
 
 @router.get("", response_model=list[FolderOut])
 def list_folders(
-    parent_id: Optional[int] = Query(None),
+    parent_id: int | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):

@@ -1,5 +1,5 @@
 """Authentication routes."""
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -104,7 +104,7 @@ def logout(
     jti = payload.get("jti")
     exp = payload.get("exp")
     if jti and exp:
-        expires_at = datetime.fromtimestamp(exp, tz=timezone.utc).replace(tzinfo=None)
+        expires_at = datetime.fromtimestamp(exp, tz=UTC).replace(tzinfo=None)
         if not db.query(RevokedToken).filter(RevokedToken.jti == jti).first():
             db.add(RevokedToken(jti=jti, user_id=user.id, expires_at=expires_at))
         # Opportunistic cleanup of already-expired revocation records.
