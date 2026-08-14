@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -16,6 +15,7 @@ from app.schemas import (
     TaskAction,
     TaskOut,
     WorkflowInstanceOut,
+    WorkflowStep,
     WorkflowTemplateCreate,
     WorkflowTemplateOut,
 )
@@ -23,25 +23,39 @@ from app.security import get_current_user, require_role
 
 router = APIRouter(prefix="/api", tags=["workflow"])
 
+VALID_ROLES = {"superadmin", "admin", "manager", "user"}
 
-def _resolve_assignee(db: Session, step: dict) -> Optional[User]:
+
+def _resolve_assignee(db: Session, step: WorkflowStep) -> User | None:
     """Find the assignee for a step by explicit id or by role."""
-    if step.get("assignee_id"):
-        return db.get(User, int(step["assignee_id"]))
-    role = step.get("assignee_role")
-    if role:
-        return db.query(User).filter(User.role == role).first()
+    if step.assignee_id:
+        return db.get(User, step.assignee_id)
+    if step.assignee_role and step.assignee_role in VALID_ROLES:
+        return db.query(User).filter(User.role == step.assignee_role).first()
     return None
 
 
-def _create_task(db: Session, instance: WorkflowInstance, step_index: int, step: dict):
+def _validated_steps(raw_steps) -> list[WorkflowStep]:
+    """Validate freeform template steps against the WorkflowStep schema."""
+    steps = [WorkflowStep.model_validate(s) for s in (raw_steps or [])]
+    for step in steps:
+        if not step.name or not step.name.strip():
+            raise HTTPException(status_code=400, detail="Every workflow step needs a name")
+        if not step.assignee_id and not step.assignee_role:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Step '{step.name}' has no assignee (assignee_id or assignee_role)",
+            )
+    return steps
+
+
+def _create_task(db: Session, instance: WorkflowInstance, step_index: int, step: WorkflowStep):
     assignee = _resolve_assignee(db, step)
-    due_days = step.get("due_days")
-    due = now() + timedelta(days=due_days) if due_days else None
+    due = now() + timedelta(days=step.due_days) if step.due_days else None
     t = Task(
         instance_id=instance.id,
         step_index=step_index,
-        step_name=step.get("name", f"Step {step_index + 1}"),
+        step_name=step.name,
         assignee_id=assignee.id if assignee else None,
         due_at=due,
     )
@@ -71,10 +85,11 @@ def create_workflow(
     db: Session = Depends(get_db),
     user: User = Depends(require_role("superadmin", "admin", "manager")),
 ):
+    steps = _validated_steps(payload.steps)
     w = WorkflowTemplate(
         name=payload.name,
         description=payload.description,
-        steps=payload.steps or [],
+        steps=[s.model_dump() for s in steps],
         created_by=user.id,
     )
     db.add(w)
@@ -93,6 +108,11 @@ def delete_workflow(
     w = db.get(WorkflowTemplate, workflow_id)
     if not w:
         raise HTTPException(status_code=404, detail="Workflow not found")
+    # FK enforcement would turn this into a 500 once the template has been used.
+    if db.query(WorkflowInstance).filter(WorkflowInstance.template_id == workflow_id).first():
+        raise HTTPException(
+            status_code=409, detail="Workflow has been used; deactivate it instead"
+        )
     db.delete(w)
     db.commit()
     audit(db, user, "WORKFLOW_DELETE", "workflow_template", workflow_id, w.name)
@@ -115,9 +135,23 @@ def start_workflow(
     w = db.get(WorkflowTemplate, template_id)
     if not w:
         raise HTTPException(status_code=404, detail="Workflow template not found")
-    steps = w.steps or []
+    # A document runs at most one workflow at a time (concurrent instances would
+    # both mutate its status).
+    if (
+        db.query(WorkflowInstance)
+        .filter(WorkflowInstance.document_id == doc_id, WorkflowInstance.status == "running")
+        .first()
+    ):
+        raise HTTPException(status_code=409, detail="A workflow is already running on this document")
+    steps = _validated_steps(w.steps)
     if not steps:
         raise HTTPException(status_code=400, detail="Workflow has no steps")
+    # Refuse to start if the first step cannot be assigned: an unassigned task
+    # can never be acted on and would deadlock the workflow.
+    if not _resolve_assignee(db, steps[0]):
+        raise HTTPException(
+            status_code=400, detail=f"Step '{steps[0].name}' has no assignable user"
+        )
     inst = WorkflowInstance(
         template_id=w.id,
         document_id=doc_id,
@@ -150,7 +184,7 @@ def list_instances(
 
 @router.get("/tasks", response_model=list[TaskOut])
 def list_tasks(
-    status: Optional[str] = None,
+    status: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -192,20 +226,46 @@ def task_action(
     t = db.get(Task, task_id)
     if not t:
         raise HTTPException(status_code=404, detail="Task not found")
-    if t.assignee_id != user.id and user.role not in ("superadmin", "admin"):
+    inst = db.get(WorkflowInstance, t.instance_id)
+    # Unassigned tasks (e.g. role with no users) can be acted on by the
+    # instance creator or admins so the workflow cannot deadlock.
+    may_act = t.assignee_id == user.id or user.role in ("superadmin", "admin") or (
+        t.assignee_id is None and inst and inst.created_by == user.id
+    )
+    if not may_act:
         raise HTTPException(status_code=403, detail="Not assigned to you")
     if t.status != "pending":
         raise HTTPException(status_code=400, detail="Task already resolved")
 
-    inst = db.get(WorkflowInstance, t.instance_id)
-    steps = db.get(WorkflowTemplate, inst.template_id).steps or []
     d = db.get(Document, inst.document_id)
+    # The actor must still be able to read the document being approved.
+    f = db.get(Folder, d.folder_id)
+    if not has_permission(db, user, "read", f, d):
+        raise HTTPException(status_code=403, detail="No permission")
+
+    # Atomically claim the pending task so two concurrent actions cannot both
+    # advance the workflow (double-increment / skipped steps).
+    claimed = (
+        db.query(Task)
+        .filter(Task.id == task_id, Task.status == "pending")
+        .update(
+            {
+                Task.status: "approved" if payload.approved else "rejected",
+                Task.completed_at: now(),
+            },
+            synchronize_session=False,
+        )
+    )
+    if not claimed:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Task already resolved")
+    db.refresh(t)
+
+    steps = _validated_steps(db.get(WorkflowTemplate, inst.template_id).steps)
 
     t.comment = payload.comment or ""
-    t.completed_at = now()
 
     if payload.approved:
-        t.status = "approved"
         inst.current_step += 1
         if inst.current_step >= len(steps):
             inst.status = "completed"
@@ -218,7 +278,6 @@ def task_action(
             d.status = "review"
             d.updated_at = now()
     else:
-        t.status = "rejected"
         inst.status = "rejected"
         inst.completed_at = now()
         d.status = "draft"
@@ -253,7 +312,7 @@ def list_notifications(
 ):
     q = db.query(Notification).filter(Notification.user_id == user.id)
     if unread_only:
-        q = q.filter(Notification.read == False)
+        q = q.filter(Notification.read.is_(False))
     return q.order_by(Notification.created_at.desc()).limit(100).all()
 
 

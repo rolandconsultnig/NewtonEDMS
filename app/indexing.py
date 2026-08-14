@@ -5,14 +5,18 @@ The Whoosh index lives under ``storage/whoosh_index``.
 """
 from __future__ import annotations
 
-import os
+import logging
 import zipfile
 from pathlib import Path
-from typing import Iterable, List, Optional
 
 from app import database
+from app.config import settings
 
-INDEX_DIR = database.STORAGE_DIR / "whoosh_index"
+logger = logging.getLogger("newedms.indexing")
+
+def _index_dir() -> Path:
+    # Resolved per call so runtime storage overrides (and tests) are honoured.
+    return database.STORAGE_DIR / "whoosh_index"
 
 
 def _imports():
@@ -29,10 +33,10 @@ def _imports():
 
 def _ensure_index():
     from whoosh import index
-    from whoosh.fields import ID, NUMERIC, STORED, TEXT, Schema
+    from whoosh.fields import ID, NUMERIC, TEXT, Schema
 
-    INDEX_DIR.mkdir(parents=True, exist_ok=True)
-    if not index.exists_in(INDEX_DIR):
+    _index_dir().mkdir(parents=True, exist_ok=True)
+    if not index.exists_in(_index_dir()):
         schema = Schema(
             doc_id=ID(stored=True, unique=True),
             title=TEXT(stored=True),
@@ -41,20 +45,36 @@ def _ensure_index():
             barcodes=TEXT(stored=True),
             size=NUMERIC(stored=True, sortable=True),
         )
-        return index.create_in(INDEX_DIR, schema)
-    return index.open_dir(INDEX_DIR)
+        return index.create_in(_index_dir(), schema)
+    return index.open_dir(_index_dir())
 
 
 def _extract_text(path: Path, mime: str) -> tuple[str, str]:
-    """Return (text, barcodes). Best-effort extraction."""
+    """Return (text, barcodes). Best-effort extraction with a size guard."""
     text = ""
     barcodes = ""
+    try:
+        if path.stat().st_size > settings.max_extract_bytes:
+            # Multi-GB files must not be read into memory in the request path.
+            return text, barcodes
+    except OSError:
+        return text, barcodes
     ext = path.suffix.lower()
 
     # Plain text / code
     if ext in (".txt", ".md", ".csv", ".json", ".xml", ".html", ".htm", ".log", ".py", ".js", ".css", ".sql"):
         try:
-            text = path.read_text(encoding="utf-8", errors="ignore")
+            # Stream with a byte budget rather than reading the whole file.
+            budget = settings.max_extract_bytes
+            chunks: list[str] = []
+            with path.open("r", encoding="utf-8", errors="ignore") as fh:
+                while budget > 0:
+                    chunk = fh.read(min(1024 * 1024, budget))
+                    if not chunk:
+                        break
+                    budget -= len(chunk.encode("utf-8", errors="ignore"))
+                    chunks.append(chunk)
+                text = "".join(chunks)
         except Exception:
             pass
         return text, barcodes
@@ -145,7 +165,6 @@ def _extract_text(path: Path, mime: str) -> tuple[str, str]:
 def index_document(doc_id: int, title: str, tags: str, file_path: str, size: int) -> None:
     """Add or update a document in the full-text index."""
     try:
-        from whoosh import index
         from whoosh.writing import AsyncWriter
 
         ix = _ensure_index()
@@ -162,7 +181,7 @@ def index_document(doc_id: int, title: str, tags: str, file_path: str, size: int
         writer.commit()
     except Exception:
         # Indexing is best-effort; the app continues to work if libraries are missing.
-        pass
+        logger.warning("index_document failed for doc %s", doc_id, exc_info=True)
 
 
 def remove_document(doc_id: int) -> None:
@@ -170,29 +189,33 @@ def remove_document(doc_id: int) -> None:
     try:
         from whoosh import index
 
-        if not INDEX_DIR.exists():
+        if not _index_dir().exists():
             return
-        ix = index.open_dir(INDEX_DIR)
+        ix = index.open_dir(_index_dir())
         writer = ix.writer()
         writer.delete_by_term("doc_id", str(doc_id))
         writer.commit()
     except Exception:
-        pass
+        logger.warning("remove_document failed for doc %s", doc_id, exc_info=True)
 
 
-def search_documents(query: str, limit: int = 100) -> List[int]:
+def search_documents(query: str, limit: int = 100) -> list[int]:
     """Return the ids of documents matching the full-text query."""
     try:
         from whoosh import index
         from whoosh.qparser import MultifieldParser
 
-        if not query or not INDEX_DIR.exists():
+        if not query or not _index_dir().exists():
             return []
-        ix = index.open_dir(INDEX_DIR)
+        if any(ch in query for ch in ("*", "?", "~", "[", "]", ":")):
+            # Reject wildcard/fuzzy/range/field syntax: expensive full-index scans.
+            return []
+        ix = index.open_dir(_index_dir())
         with ix.searcher() as searcher:
             parser = MultifieldParser(["title", "tags", "content", "barcodes"], ix.schema)
             q = parser.parse(query)
             results = searcher.search(q, limit=limit)
             return [int(r["doc_id"]) for r in results]
     except Exception:
+        logger.warning("search_documents failed", exc_info=True)
         return []

@@ -1,30 +1,35 @@
 """Collaboration and governance routes: templates, comments, shares, retention, reports."""
 from __future__ import annotations
 
-import json
 import secrets
 import shutil
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
-from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.audit import audit
+from app.config import settings
 from app.database import get_db, now
+from app.indexing import remove_document
+from app.limiter import limiter
 from app.models import (
     AuditLog,
+    CalendarEvent,
     Comment,
     Document,
+    DocumentVersion,
     Folder,
     Group,
     MetadataTemplate,
     RetentionPolicy,
     ShareLink,
+    Task,
     User,
+    WorkflowInstance,
 )
 from app.permissions import has_permission
 from app.schemas import (
@@ -177,6 +182,14 @@ def delete_comment(
         raise HTTPException(status_code=404, detail="Comment not found")
     if c.user_id != user.id and user.role not in ("superadmin", "admin"):
         raise HTTPException(status_code=403, detail="Not your comment")
+    # The caller must still be able to read the document (access may have been
+    # revoked since the comment was written).
+    d = db.get(Document, doc_id)
+    if not d:
+        raise HTTPException(status_code=404, detail="Document not found")
+    f = db.get(Folder, d.folder_id)
+    if not has_permission(db, user, "read", f, d):
+        raise HTTPException(status_code=403, detail="No permission")
     db.delete(c)
     db.commit()
     audit(db, user, "COMMENT_DELETE", "comment", comment_id, f"Document {doc_id}")
@@ -189,8 +202,8 @@ def delete_comment(
 @router.post("/documents/{doc_id}/shares", response_model=ShareLinkOut)
 def create_share(
     doc_id: int,
-    expires_days: Optional[int] = None,
-    max_downloads: Optional[int] = None,
+    expires_days: int | None = None,
+    max_downloads: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -198,9 +211,12 @@ def create_share(
     if not d:
         raise HTTPException(status_code=404, detail="Document not found")
     f = db.get(Folder, d.folder_id)
-    if not has_permission(db, user, "read", f, d):
-        raise HTTPException(status_code=403, detail="No permission")
-    expires = now() + timedelta(days=expires_days) if expires_days else None
+    # Sharing mints an unauthenticated download URL, so require write access —
+    # a read-only viewer must not be able to create permanent ACL bypasses.
+    if not has_permission(db, user, "write", f, d):
+        raise HTTPException(status_code=403, detail="No permission to share")
+    # Shares always expire (default 7 days) so they cannot outlive the grant.
+    expires = now() + timedelta(days=expires_days if expires_days else 7)
     token = secrets.token_urlsafe(24)
     s = ShareLink(
         token=token,
@@ -212,7 +228,8 @@ def create_share(
     db.add(s)
     db.commit()
     db.refresh(s)
-    audit(db, user, "SHARE_CREATE", "share", s.id, f"Document {doc_id} token={token}")
+    # Never persist the raw token in the audit log.
+    audit(db, user, "SHARE_CREATE", "share", s.id, f"Document {doc_id} share={s.id}")
     return {
         "id": s.id,
         "token": s.token,
@@ -227,8 +244,10 @@ def create_share(
 
 
 @router.get("/shares/{token}")
+@limiter.limit(lambda: settings.share_rate_limit)
 def use_share(
     token: str,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     s = db.query(ShareLink).filter(ShareLink.token == token).first()
@@ -236,17 +255,32 @@ def use_share(
         raise HTTPException(status_code=404, detail="Share link not found")
     if s.expires_at and s.expires_at < now():
         raise HTTPException(status_code=410, detail="Share link expired")
-    if s.max_downloads and s.download_count >= s.max_downloads:
-        raise HTTPException(status_code=410, detail="Download limit reached")
     d = db.get(Document, s.document_id)
     if not d:
         raise HTTPException(status_code=404, detail="Document not found")
+    # Atomically claim one download; concurrent requests cannot exceed the cap.
+    claimed = (
+        db.query(ShareLink)
+        .filter(
+            ShareLink.id == s.id,
+            or_(
+                ShareLink.max_downloads.is_(None),
+                ShareLink.download_count < ShareLink.max_downloads,
+            ),
+        )
+        .update(
+            {ShareLink.download_count: ShareLink.download_count + 1},
+            synchronize_session=False,
+        )
+    )
+    if not claimed:
+        db.commit()
+        raise HTTPException(status_code=410, detail="Download limit reached")
+    db.commit()
     path = Path(d.file_path)
     if not path.exists():
         raise HTTPException(status_code=404, detail="File not found")
-    s.download_count += 1
-    db.commit()
-    audit(db, None, "SHARE_DOWNLOAD", "document", d.id, f"Token {token}")
+    audit(db, None, "SHARE_DOWNLOAD", "document", d.id, f"Share {s.id}")
     return FileResponse(path, filename=d.name, media_type=d.mime)
 
 
@@ -262,20 +296,26 @@ def list_shares(
     f = db.get(Folder, d.folder_id)
     if not has_permission(db, user, "read", f, d):
         raise HTTPException(status_code=403, detail="No permission")
-    return [
-        {
-            "id": s.id,
-            "token": s.token,
-            "document_id": s.document_id,
-            "created_by": s.created_by,
-            "expires_at": s.expires_at,
-            "max_downloads": s.max_downloads,
-            "download_count": s.download_count,
-            "created_at": s.created_at,
-            "url": f"/api/shares/{s.token}",
-        }
-        for s in db.query(ShareLink).filter(ShareLink.document_id == doc_id).all()
-    ]
+    is_privileged = user.role in ("superadmin", "admin")
+    results = []
+    for s in db.query(ShareLink).filter(ShareLink.document_id == doc_id).all():
+        # Full tokens only for the creator/admins; others see a masked preview.
+        owner = is_privileged or s.created_by == user.id
+        token = s.token if owner else (s.token[:4] + "…" if s.token else "")
+        results.append(
+            {
+                "id": s.id,
+                "token": token,
+                "document_id": s.document_id,
+                "created_by": s.created_by,
+                "expires_at": s.expires_at,
+                "max_downloads": s.max_downloads,
+                "download_count": s.download_count,
+                "created_at": s.created_at,
+                "url": f"/api/shares/{token}" if owner else None,
+            }
+        )
+    return results
 
 
 @router.delete("/documents/{doc_id}/shares/{share_id}")
@@ -332,8 +372,8 @@ def apply_policies(
     db: Session = Depends(get_db),
     user: User = Depends(require_role("superadmin", "admin")),
 ):
-    threshold = now() - timedelta(days=1)
     affected = 0
+    failed = 0
     for policy in db.query(RetentionPolicy).all():
         cutoff = now() - timedelta(days=policy.years * 365)
         q = db.query(Document).filter(Document.created_at < cutoff)
@@ -343,15 +383,53 @@ def apply_policies(
             if policy.action == "archive":
                 d.status = "archived"
                 d.updated_at = now()
+                affected += 1
             elif policy.action == "delete":
-                ddir = doc_storage_dir(d.id)
-                if ddir.exists():
-                    shutil.rmtree(ddir)
-                db.delete(d)
-            affected += 1
-    db.commit()
-    audit(db, user, "RETENTION_APPLY", "retention_policy", None, f"Affected {affected} documents")
-    return {"affected": affected}
+                # Purge dependent rows and the search-index entry FIRST, commit
+                # the DB delete, and only then destroy files. A failure must
+                # never leave the database pointing at deleted directories.
+                try:
+                    instance_ids = [
+                        row[0]
+                        for row in db.query(WorkflowInstance.id)
+                        .filter(WorkflowInstance.document_id == d.id)
+                        .all()
+                    ]
+                    if instance_ids:
+                        db.query(Task).filter(Task.instance_id.in_(instance_ids)).delete(
+                            synchronize_session=False
+                        )
+                        db.query(WorkflowInstance).filter(
+                            WorkflowInstance.id.in_(instance_ids)
+                        ).delete(synchronize_session=False)
+                    db.query(Comment).filter(Comment.document_id == d.id).delete(
+                        synchronize_session=False
+                    )
+                    db.query(ShareLink).filter(ShareLink.document_id == d.id).delete(
+                        synchronize_session=False
+                    )
+                    db.query(DocumentVersion).filter(DocumentVersion.document_id == d.id).delete(
+                        synchronize_session=False
+                    )
+                    db.query(CalendarEvent).filter(CalendarEvent.document_id == d.id).update(
+                        {"document_id": None}, synchronize_session=False
+                    )
+                    remove_document(d.id)
+                    db.delete(d)
+                    db.commit()
+                    ddir = doc_storage_dir(d.id)
+                    if ddir.exists():
+                        shutil.rmtree(ddir, ignore_errors=True)
+                    affected += 1
+                except Exception:
+                    # One bad document must not abort the whole policy run.
+                    db.rollback()
+                    failed += 1
+    audit(
+        db, user, "RETENTION_APPLY", "retention_policy", None,
+        f"Affected {affected} documents, {failed} failures",
+    )
+    return {"affected": affected, "failed": failed}
 
 
 @router.delete("/retention-policies/{policy_id}")

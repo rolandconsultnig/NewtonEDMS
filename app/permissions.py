@@ -1,6 +1,5 @@
 """Folder/document access-control logic."""
 
-from typing import List, Optional
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -17,7 +16,7 @@ def _perm_column(action: str) -> str:
     }.get(action, "can_read")
 
 
-def folder_chain(db: Session, folder: Folder) -> List[Folder]:
+def folder_chain(db: Session, folder: Folder) -> list[Folder]:
     chain = []
     current = folder
     while current:
@@ -33,7 +32,7 @@ def has_permission(
     user: User,
     action: str,
     folder: Folder,
-    doc: Optional[Document] = None,
+    doc: Document | None = None,
 ) -> bool:
     if user.role in ("superadmin", "admin"):
         return True
@@ -43,8 +42,8 @@ def has_permission(
         return True
     # public read on folder or doc in public folder
     if action == "read":
-        if doc and doc.folder and doc.folder.is_public:
-            return True
+        # NB: the folder passed in IS the document's folder at every call site;
+        # Document has no `folder` relationship to walk.
         if folder and folder.is_public:
             return True
     resource_targets = []

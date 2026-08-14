@@ -1,10 +1,10 @@
 """Extra features: faceted search, archive export, backup, shared calendar."""
 from __future__ import annotations
 
+import sqlite3
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app import database
 from app.audit import audit
-from app.database import DB_PATH, get_db, now
+from app.database import DB_PATH, get_db
 from app.models import CalendarEvent, Document, Folder, User
 from app.permissions import has_permission, readable_folder_ids
 from app.schemas import CalendarEventCreate, CalendarEventOut, FacetsOut
@@ -20,13 +20,16 @@ from app.security import get_current_user, require_role
 
 router = APIRouter(prefix="/api", tags=["extras"])
 
+MAX_EXPORT_DOCUMENTS = 2000
+BACKUP_RETENTION = 5
+
 
 # ---------------------------------------------------------------------------
 # Faceted navigation
 # ---------------------------------------------------------------------------
 @router.get("/facets", response_model=FacetsOut)
 def facets(
-    folder_id: Optional[int] = None,
+    folder_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -89,6 +92,13 @@ def export_folder(
         raise HTTPException(status_code=403, detail="No permission")
 
     folders = _collect_subtree(db, f)
+    if user.role not in ("superadmin", "admin"):
+        # A read grant on the root must not expose documents in child folders
+        # whose ACLs exclude the caller — keep only readable folders.
+        allowed = readable_folder_ids(db, user)
+        folders = [fo for fo in folders if fo.id in allowed]
+    if not folders:
+        raise HTTPException(status_code=403, detail="No permission")
     paths = {fo.id: fo.name for fo in folders}
     # Build relative paths for nested folders
     rel: dict[int, str] = {}
@@ -103,6 +113,10 @@ def export_folder(
             rel[fo.id] = rel_path(parent) + "/" + fo.name
         return rel[fo.id]
 
+    def safe_arcname(segment: str) -> str:
+        # Defensive: never let a folder/document name escape the archive root.
+        return segment.replace("/", "_").replace("\\", "_").replace("..", "_")
+
     export_dir = database.STORAGE_DIR / "exports"
     export_dir.mkdir(parents=True, exist_ok=True)
     zip_path = export_dir / f"folder_{folder_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.zip"
@@ -112,10 +126,16 @@ def export_folder(
         for fo in folders:
             docs = db.query(Document).filter(Document.folder_id == fo.id).all()
             for d in docs:
+                if count >= MAX_EXPORT_DOCUMENTS:
+                    break
                 p = Path(d.file_path)
                 if p.exists():
-                    zf.write(p, arcname=f"{rel_path(fo)}/{d.name}")
+                    zf.write(p, arcname=f"{safe_arcname(rel_path(fo))}/{safe_arcname(d.name)}")
                     count += 1
+
+    # Keep the exports directory from growing without bound.
+    for old in sorted(export_dir.glob("*.zip"), key=lambda p: p.stat().st_mtime, reverse=True)[10:]:
+        old.unlink(missing_ok=True)
 
     audit(db, user, "FOLDER_EXPORT", "folder", folder_id, f"Exported {count} documents")
     return FileResponse(zip_path, filename=zip_path.name, media_type="application/zip")
@@ -137,14 +157,31 @@ def create_backup(
     files = 0
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         if DB_PATH.exists():
-            zf.write(DB_PATH, arcname="edms.db")
-            files += 1
+            # Byte-copying a live SQLite file can capture a torn snapshot; use
+            # SQLite's online backup API to obtain a consistent copy instead.
+            tmp_db = backup_dir / f".db_{stamp}"
+            try:
+                src = sqlite3.connect(str(DB_PATH))
+                dst = sqlite3.connect(str(tmp_db))
+                src.backup(dst)
+                dst.close()
+                src.close()
+                zf.write(tmp_db, arcname="edms.db")
+                files += 1
+            finally:
+                tmp_db.unlink(missing_ok=True)
         docs_root = database.STORAGE_DIR / "documents"
         if docs_root.exists():
             for p in docs_root.rglob("*"):
                 if p.is_file():
                     zf.write(p, arcname=str(p.relative_to(database.STORAGE_DIR)))
                     files += 1
+
+    # Retention: keep only the most recent backups.
+    for old in sorted(
+        backup_dir.glob("backup_*.zip"), key=lambda p: p.stat().st_mtime, reverse=True
+    )[BACKUP_RETENTION:]:
+        old.unlink(missing_ok=True)
 
     audit(db, user, "BACKUP_CREATE", None, None, f"Backup {zip_path.name} with {files} files")
     return {"ok": True, "file": zip_path.name, "files": files, "size": zip_path.stat().st_size}
@@ -172,7 +209,16 @@ def list_events(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    return db.query(CalendarEvent).order_by(CalendarEvent.start_at).all()
+    if user.role in ("superadmin", "admin"):
+        return db.query(CalendarEvent).order_by(CalendarEvent.start_at).all()
+    # Regular users see only their own events (an event's title/description and
+    # document reference are private to its creator).
+    return (
+        db.query(CalendarEvent)
+        .filter(CalendarEvent.created_by == user.id)
+        .order_by(CalendarEvent.start_at)
+        .all()
+    )
 
 
 @router.post("/calendar", response_model=CalendarEventOut)
@@ -181,6 +227,13 @@ def create_event(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    if payload.document_id is not None:
+        d = db.get(Document, payload.document_id)
+        if not d:
+            raise HTTPException(status_code=404, detail="Document not found")
+        f = db.get(Folder, d.folder_id)
+        if not has_permission(db, user, "read", f, d):
+            raise HTTPException(status_code=403, detail="No permission")
     e = CalendarEvent(
         title=payload.title,
         description=payload.description,
