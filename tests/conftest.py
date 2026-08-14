@@ -11,7 +11,6 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -33,12 +32,9 @@ def _login(client: TestClient, username: str = "admin", password: str = "admin12
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
-    # Fresh in-memory database shared across one connection.
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+    # Fresh in-memory database shared across one connection. Built via the app's
+    # engine factory so SQLite FK enforcement is active in tests too.
+    engine = db_mod.create_db_engine("sqlite:///:memory:", poolclass=StaticPool)
     db_mod.engine = engine
     db_mod.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db_mod.Base.metadata.create_all(bind=engine)

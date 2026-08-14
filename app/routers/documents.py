@@ -16,7 +16,18 @@ from app import database
 from app.audit import audit
 from app.database import get_db, now
 from app.indexing import index_document, remove_document, search_documents
-from app.models import Document, DocumentVersion, Folder, MetadataTemplate, User
+from app.models import (
+    CalendarEvent,
+    Comment,
+    Document,
+    DocumentVersion,
+    Folder,
+    MetadataTemplate,
+    ShareLink,
+    Task,
+    User,
+    WorkflowInstance,
+)
 from app.permissions import has_permission, readable_document_ids, readable_folder_ids
 from app.schemas import DocumentOut, VersionOut
 from app.security import get_current_user
@@ -450,6 +461,28 @@ def delete_document(
     if ddir.exists():
         shutil.rmtree(ddir)
     remove_document(doc_id)
+    # Purge rows that reference this document (FK enforcement is on, and
+    # orphaned versions/comments/shares should not outlive the document).
+    instance_ids = [
+        row[0]
+        for row in db.query(WorkflowInstance.id)
+        .filter(WorkflowInstance.document_id == doc_id)
+        .all()
+    ]
+    if instance_ids:
+        db.query(Task).filter(Task.instance_id.in_(instance_ids)).delete(synchronize_session=False)
+        db.query(WorkflowInstance).filter(WorkflowInstance.id.in_(instance_ids)).delete(
+            synchronize_session=False
+        )
+    db.query(Comment).filter(Comment.document_id == doc_id).delete(synchronize_session=False)
+    db.query(ShareLink).filter(ShareLink.document_id == doc_id).delete(synchronize_session=False)
+    db.query(DocumentVersion).filter(DocumentVersion.document_id == doc_id).delete(
+        synchronize_session=False
+    )
+    # Calendar events may outlive the document; just detach the reference.
+    db.query(CalendarEvent).filter(CalendarEvent.document_id == doc_id).update(
+        {"document_id": None}
+    )
     db.delete(d)
     db.commit()
     audit(db, user, "DOCUMENT_DELETE", "document", doc_id, f"Deleted document {d.name}")

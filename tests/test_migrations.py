@@ -29,6 +29,9 @@ def test_upgrade_head_creates_full_schema(tmp_path):
     expected = {
         "users", "groups", "user_groups", "folders", "documents",
         "document_versions", "permissions", "audit_logs", "revoked_tokens",
+        "comments", "share_links", "retention_policies", "workflow_templates",
+        "workflow_instances", "tasks", "notifications", "calendar_events",
+        "metadata_templates", "import_folders",
     }
     assert expected.issubset(tables)
 

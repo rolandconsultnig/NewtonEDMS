@@ -5,11 +5,12 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app import models
 from app.audit import audit
 from app.database import get_db
 from app.models import User
 from app.schemas import UserCreate, UserOut, UserUpdate
-from app.security import get_password_hash, require_role
+from app.security import get_password_hash, require_role, validate_password_strength
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -28,6 +29,7 @@ def create_user(
     db: Session = Depends(get_db),
     user: User = Depends(require_role("superadmin", "admin")),
 ):
+    validate_password_strength(payload.password)
     if db.query(User).filter(User.username == payload.username).first():
         raise HTTPException(status_code=400, detail="Username already exists")
     u = User(
@@ -72,7 +74,66 @@ def delete_user(
     u = db.get(User, user_id)
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
-    db.delete(u)
+
+    # Users who own content are deactivated, never hard-deleted: their documents,
+    # folders and version history must keep a valid provenance chain.
+    owned = []
+    if db.query(models.Document).filter(models.Document.created_by == user_id).first():
+        owned.append("documents")
+    if db.query(models.Folder).filter(models.Folder.created_by == user_id).first():
+        owned.append("folders")
+    if db.query(models.DocumentVersion).filter(models.DocumentVersion.created_by == user_id).first():
+        owned.append("document versions")
+    if owned:
+        raise HTTPException(
+            status_code=409,
+            detail=f"User owns {', '.join(owned)}; deactivate the account instead of deleting it",
+        )
+
+    # Detach nullable references (keeps the audit trail, releases checkouts/tasks).
+    db.query(models.AuditLog).filter(models.AuditLog.user_id == user_id).update({"user_id": None})
+    db.query(models.Document).filter(models.Document.checked_out_by == user_id).update(
+        {"checked_out_by": None}
+    )
+    db.query(models.Task).filter(models.Task.assignee_id == user_id).update({"assignee_id": None})
+    # Remove rows that belong solely to the user, in FK-safe order
+    # (workflow tasks before their instances, instances before templates).
+    db.query(models.Notification).filter(models.Notification.user_id == user_id).delete(
+        synchronize_session=False
+    )
+    db.query(models.Comment).filter(models.Comment.user_id == user_id).delete(
+        synchronize_session=False
+    )
+    db.query(models.ShareLink).filter(models.ShareLink.created_by == user_id).delete(
+        synchronize_session=False
+    )
+    db.query(models.RetentionPolicy).filter(models.RetentionPolicy.created_by == user_id).delete(
+        synchronize_session=False
+    )
+    db.query(models.CalendarEvent).filter(models.CalendarEvent.created_by == user_id).delete(
+        synchronize_session=False
+    )
+    instance_ids = [
+        row[0]
+        for row in db.query(models.WorkflowInstance.id)
+        .filter(models.WorkflowInstance.created_by == user_id)
+        .all()
+    ]
+    if instance_ids:
+        db.query(models.Task).filter(models.Task.instance_id.in_(instance_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(models.WorkflowInstance).filter(
+            models.WorkflowInstance.id.in_(instance_ids)
+        ).delete(synchronize_session=False)
+    db.query(models.WorkflowTemplate).filter(
+        models.WorkflowTemplate.created_by == user_id
+    ).delete(synchronize_session=False)
+    db.query(models.RevokedToken).filter(models.RevokedToken.user_id == user_id).delete(
+        synchronize_session=False
+    )
+
+    db.delete(u)  # user_groups association rows are removed by SQLAlchemy
     db.commit()
     audit(db, current, "USER_DELETE", "user", user_id, f"Deleted user {u.username}")
     return {"ok": True}

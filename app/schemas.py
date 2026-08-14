@@ -1,9 +1,11 @@
 """Pydantic request/response schemas."""
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+RoleName = Literal["superadmin", "admin", "manager", "user"]
 
 
 class Token(BaseModel):
@@ -26,12 +28,12 @@ class UserCreate(BaseModel):
     username: str
     email: Optional[str] = ""
     password: str
-    role: str = "user"
+    role: RoleName = "user"
 
 
 class UserUpdate(BaseModel):
     email: Optional[str] = None
-    role: Optional[str] = None
+    role: Optional[RoleName] = None
     is_active: Optional[bool] = None
 
 

@@ -17,6 +17,7 @@ from app.security import (
     get_current_user,
     get_password_hash,
     get_token,
+    validate_password_strength,
     verify_password,
 )
 
@@ -36,11 +37,14 @@ def _set_auth_cookie(response: Response, access_token: str) -> None:
 
 
 @router.post("/register", response_model=Token)
+@limiter.limit(lambda: settings.register_rate_limit)
 def register(
+    request: Request,
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
+    validate_password_strength(form_data.password)
     if db.query(User).filter(User.username == form_data.username).first():
         raise HTTPException(status_code=400, detail="Username already taken")
     user = User(

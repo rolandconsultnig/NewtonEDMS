@@ -32,6 +32,20 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
+def validate_password_strength(password: str) -> None:
+    """Enforce the minimum password policy; raises 400 on violation."""
+    if len(password) < settings.password_min_length:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Password must be at least {settings.password_min_length} characters long",
+        )
+    if not any(c.isalpha() for c in password) or not any(c.isdigit() for c in password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must contain at least one letter and one digit",
+        )
+
+
 def create_access_token(data: dict, expires: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
     expire = now() + (expires or timedelta(minutes=settings.access_token_expire_minutes))

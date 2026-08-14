@@ -18,7 +18,7 @@ def _upload(client, headers, folder_id, title, payload=b"x"):
     ).json()
 
 
-def _register(client, username, password="pw12345"):
+def _register(client, username, password="pw123456"):
     token = client.post(
         "/api/auth/register", data={"username": username, "password": password}
     ).json()["access_token"]

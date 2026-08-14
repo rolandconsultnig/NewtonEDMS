@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.audit import audit
 from app.database import get_db
-from app.models import Document, Folder, Permission, User
+from app.models import Document, Folder, Permission, RetentionPolicy, User
 from app.permissions import has_permission, readable_folder_ids
 from app.schemas import FolderCreate, FolderOut, PermissionOut
 from app.security import get_current_user
@@ -129,6 +129,10 @@ def delete_folder(
         raise HTTPException(status_code=403, detail="No permission to delete folder")
     if db.query(Document).filter(Document.folder_id == folder_id).first() or f.children:
         raise HTTPException(status_code=400, detail="Folder is not empty")
+    # Retention policies may outlive their folder; detach the reference.
+    db.query(RetentionPolicy).filter(RetentionPolicy.folder_id == folder_id).update(
+        {"folder_id": None}
+    )
     db.delete(f)
     db.commit()
     audit(db, user, "FOLDER_DELETE", "folder", folder_id, f"Deleted folder {f.name}")

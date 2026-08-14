@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.audit import audit
 from app.database import get_db
-from app.models import Group, User
+from app.models import Group, Permission, User
 from app.schemas import GroupCreate, GroupOut
 from app.security import get_current_user, require_role
 
@@ -61,7 +61,11 @@ def delete_group(
     g = db.get(Group, group_id)
     if not g:
         raise HTTPException(status_code=404, detail="Group not found")
-    db.delete(g)
+    # Drop ACL rows granted to this group so they cannot linger as dead grants.
+    db.query(Permission).filter(
+        Permission.principal_type == "group", Permission.principal_id == group_id
+    ).delete(synchronize_session=False)
+    db.delete(g)  # user_groups association rows are removed by SQLAlchemy
     db.commit()
     audit(db, user, "GROUP_DELETE", "group", group_id, f"Deleted group {g.name}")
     return {"ok": True}

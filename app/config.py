@@ -28,6 +28,8 @@ class Settings(BaseSettings):
         "exe,bat,cmd,com,sh,ps1,js,vbs,msi,dll,scr,jar,wsf,hta,php,pl,py"
     )
     login_rate_limit: str = "5/minute"
+    register_rate_limit: str = "10/hour"
+    password_min_length: int = 8
     seed_admin_username: str = "admin"
     seed_admin_password: str = "admin123"
     server_host: str = "0.0.0.0"
