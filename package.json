@@ -1,0 +1,12 @@
+{
+  "name": "newedms",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i ./frontend/src/input.css -o ./frontend/tailwind.css --minify",
+    "watch:css": "tailwindcss -i ./frontend/src/input.css -o ./frontend/tailwind.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0"
+  }
+}

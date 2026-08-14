@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NewEDMS</title>
+  <link rel="stylesheet" href="/static/tailwind.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <style>
+    .modal { display: none; }
+    .modal.open { display: flex; }
+    .tree-item { cursor: pointer; }
+    .tree-item:hover { background: #f3f4f6; }
+  </style>
+</head>
+<body class="bg-gray-100 h-screen flex flex-col overflow-hidden">
+  <!-- Header -->
+  <header class="bg-slate-800 text-white p-4 flex justify-between items-center shadow-md">
+    <div class="flex items-center gap-3">
+      <i class="fa-solid fa-folder-tree text-2xl"></i>
+      <h1 class="text-xl font-bold">NewEDMS</h1>
+    </div>
+    <div id="top-bar" class="hidden flex items-center gap-3">
+      <span id="user-info" class="text-sm"></span>
+      <div class="flex gap-2">
+        <input id="search-input" type="text" placeholder="Search documents..." class="px-3 py-1 rounded text-black" />
+        <button onclick="searchDocs()" class="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded"><i class="fa-solid fa-search"></i></button>
+      </div>
+      <button onclick="showTasks()" class="bg-indigo-600 hover:bg-indigo-700 px-3 py-1 rounded" title="Tasks & notifications"><i class="fa-solid fa-list-check"></i> Tasks <span id="notif-badge" class="hidden bg-red-500 rounded-full px-2 text-xs"></span></button>
+      <button onclick="showAdmin()" id="admin-btn" class="bg-emerald-600 hover:bg-emerald-700 px-3 py-1 rounded hidden">Admin</button>
+      <button onclick="logout()" class="bg-red-600 hover:bg-red-700 px-3 py-1 rounded">Logout</button>
+    </div>
+  </header>
+
+  <!-- Login -->
+  <div id="login-view" class="flex-1 flex items-center justify-center">
+    <div class="bg-white p-8 rounded shadow-lg w-96">
+      <h2 class="text-2xl font-bold mb-4 text-center">Sign in</h2>
+      <input id="username" type="text" placeholder="Username" class="w-full border p-2 mb-3 rounded" />
+      <input id="password" type="password" placeholder="Password" class="w-full border p-2 mb-4 rounded" />
+      <button onclick="login()" class="w-full bg-slate-800 text-white py-2 rounded hover:bg-slate-700">Login</button>
+      <p class="text-sm text-gray-600 mt-3">Default: admin / admin123</p>
+      <p id="login-err" class="text-red-600 text-sm mt-2 hidden"></p>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div id="main-view" class="hidden flex-1 flex overflow-hidden">
+    <!-- Sidebar folders -->
+    <aside class="w-72 bg-white border-r overflow-y-auto p-3">
+      <div class="flex justify-between items-center mb-2">
+        <h3 class="font-bold text-gray-700">Folders</h3>
+        <button onclick="openFolderModal()" class="text-blue-600 text-sm"><i class="fa-solid fa-plus"></i></button>
+      </div>
+      <div id="folder-tree" class="text-sm"></div>
+    </aside>
+
+    <!-- Content -->
+    <main class="flex-1 p-4 overflow-y-auto">
+      <div class="bg-white rounded shadow p-4">
+        <div class="flex justify-between items-center mb-4">
+          <div>
+            <h2 id="current-folder-name" class="text-xl font-bold">Root</h2>
+            <p id="breadcrumb" class="text-sm text-gray-500"></p>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="exportFolder()" class="bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded" title="Export folder as ZIP"><i class="fa-solid fa-file-zipper"></i></button>
+            <button onclick="openUploadModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
+              <i class="fa-solid fa-upload mr-1"></i> Upload
+            </button>
+          </div>
+        </div>
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-gray-100 border-b">
+              <th class="p-2">Name</th>
+              <th class="p-2">Version</th>
+              <th class="p-2">Status</th>
+              <th class="p-2">Size</th>
+              <th class="p-2">Updated</th>
+              <th class="p-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="doc-list"></tbody>
+        </table>
+        <div id="no-docs" class="text-center text-gray-500 mt-4 hidden">No documents in this folder.</div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Admin view -->
+  <div id="admin-view" class="hidden flex-1 p-4 overflow-y-auto">
+    <div class="max-w-6xl mx-auto bg-white rounded shadow p-4">
+      <div class="flex gap-2 mb-4 border-b pb-2 flex-wrap">
+        <button onclick="adminTab('users')" class="px-3 py-1 border rounded hover:bg-gray-100">Users</button>
+        <button onclick="adminTab('groups')" class="px-3 py-1 border rounded hover:bg-gray-100">Groups</button>
+        <button onclick="adminTab('templates')" class="px-3 py-1 border rounded hover:bg-gray-100">Templates</button>
+        <button onclick="adminTab('imports')" class="px-3 py-1 border rounded hover:bg-gray-100">Import folders</button>
+        <button onclick="adminTab('retention')" class="px-3 py-1 border rounded hover:bg-gray-100">Retention</button>
+        <button onclick="adminTab('workflows')" class="px-3 py-1 border rounded hover:bg-gray-100">Workflows</button>
+        <button onclick="adminTab('reports')" class="px-3 py-1 border rounded hover:bg-gray-100">Reports</button>
+        <button onclick="adminTab('backup')" class="px-3 py-1 border rounded hover:bg-gray-100">Backup</button>
+        <button onclick="adminTab('audit')" class="px-3 py-1 border rounded hover:bg-gray-100">Audit</button>
+        <button onclick="showMain()" class="ml-auto text-blue-600">Back to documents</button>
+      </div>
+      <div id="admin-content"></div>
+    </div>
+  </div>
+
+  <!-- Tasks view -->
+  <div id="tasks-view" class="hidden flex-1 p-4 overflow-y-auto">
+    <div class="max-w-5xl mx-auto space-y-4">
+      <div class="bg-white rounded shadow p-4">
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="font-bold">My tasks</h3>
+          <button onclick="showMain()" class="text-blue-600">Back to documents</button>
+        </div>
+        <div id="task-list"></div>
+      </div>
+      <div class="bg-white rounded shadow p-4">
+        <h3 class="font-bold mb-3">Notifications</h3>
+        <div id="notif-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload modal -->
+  <div id="upload-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center">
+    <div class="bg-white p-6 rounded shadow w-96">
+      <h3 class="text-lg font-bold mb-3">Upload document(s)</h3>
+      <input id="upload-title" type="text" placeholder="Title (single file only)" class="w-full border p-2 mb-2 rounded" />
+      <input id="upload-tags" type="text" placeholder="Tags (comma separated)" class="w-full border p-2 mb-2 rounded" />
+      <textarea id="upload-meta" placeholder='Metadata JSON e.g. {"customer":"Acme"}' class="w-full border p-2 mb-2 rounded text-sm"></textarea>
+      <select id="upload-template" class="w-full border p-2 mb-2 rounded"><option value="">No metadata template</option></select>
+      <input id="upload-file" type="file" multiple class="w-full border p-2 mb-4 rounded" />
+      <div class="flex justify-end gap-2">
+        <button onclick="closeModal('upload-modal')" class="px-3 py-1 border rounded">Cancel</button>
+        <button onclick="uploadDoc()" class="px-3 py-1 bg-blue-600 text-white rounded">Upload</button>
+      </div>
+      <p id="upload-err" class="text-red-600 text-sm mt-2 hidden"></p>
+    </div>
+  </div>
+
+  <!-- Folder modal -->
+  <div id="folder-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center">
+    <div class="bg-white p-6 rounded shadow w-80">
+      <h3 class="text-lg font-bold mb-3">New folder</h3>
+      <input id="folder-name" type="text" placeholder="Folder name" class="w-full border p-2 mb-2 rounded" />
+      <label class="flex items-center gap-2 mb-4 text-sm"><input id="folder-public" type="checkbox" /> Public read</label>
+      <div class="flex justify-end gap-2">
+        <button onclick="closeModal('folder-modal')" class="px-3 py-1 border rounded">Cancel</button>
+        <button onclick="createFolder()" class="px-3 py-1 bg-blue-600 text-white rounded">Create</button>
+      </div>
+      <p id="folder-err" class="text-red-600 text-sm mt-2 hidden"></p>
+    </div>
+  </div>
+
+  <!-- Metadata modal -->
+  <div id="meta-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center">
+    <div class="bg-white p-6 rounded shadow w-96">
+      <h3 class="text-lg font-bold mb-3">Edit document</h3>
+      <input id="meta-title" type="text" placeholder="Title" class="w-full border p-2 mb-2 rounded" />
+      <input id="meta-tags" type="text" placeholder="Tags" class="w-full border p-2 mb-2 rounded" />
+      <select id="meta-status" class="w-full border p-2 mb-2 rounded">
+        <option value="draft">draft</option>
+        <option value="review">review</option>
+        <option value="approved">approved</option>
+        <option value="published">published</option>
+        <option value="archived">archived</option>
+      </select>
+      <textarea id="meta-json" placeholder="Metadata JSON" class="w-full border p-2 mb-4 rounded text-sm"></textarea>
+      <div class="flex justify-end gap-2">
+        <button onclick="closeModal('meta-modal')" class="px-3 py-1 border rounded">Cancel</button>
+        <button onclick="saveMetadata()" class="px-3 py-1 bg-blue-600 text-white rounded">Save</button>
+      </div>
+      <p id="meta-err" class="text-red-600 text-sm mt-2 hidden"></p>
+    </div>
+  </div>
+
+  <!-- Comments modal -->
+  <div id="comments-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center">
+    <div class="bg-white p-6 rounded shadow w-[500px]">
+      <h3 class="text-lg font-bold mb-3">Comments</h3>
+      <ul id="comment-list" class="text-sm max-h-60 overflow-y-auto mb-3"></ul>
+      <div class="flex gap-2">
+        <input id="comment-text" type="text" placeholder="Add a comment..." class="flex-1 border p-2 rounded" />
+        <button onclick="addComment()" class="px-3 py-1 bg-blue-600 text-white rounded">Post</button>
+      </div>
+      <div class="flex justify-end mt-3">
+        <button onclick="closeModal('comments-modal')" class="px-3 py-1 border rounded">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Share modal -->
+  <div id="share-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center">
+    <div class="bg-white p-6 rounded shadow w-[520px]">
+      <h3 class="text-lg font-bold mb-3">Share links</h3>
+      <ul id="share-list" class="text-sm max-h-48 overflow-y-auto mb-3"></ul>
+      <div class="flex gap-2 mb-3">
+        <input id="share-days" type="number" placeholder="Expires (days)" class="w-32 border p-2 rounded" />
+        <input id="share-max" type="number" placeholder="Max downloads" class="w-36 border p-2 rounded" />
+        <button onclick="createShare()" class="px-3 py-1 bg-blue-600 text-white rounded flex-1">Create link</button>
+      </div>
+      <div class="flex justify-end">
+        <button onclick="closeModal('share-modal')" class="px-3 py-1 border rounded">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Workflow start modal -->
+  <div id="wf-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center">
+    <div class="bg-white p-6 rounded shadow w-96">
+      <h3 class="text-lg font-bold mb-3">Start workflow</h3>
+      <select id="wf-template" class="w-full border p-2 mb-4 rounded"></select>
+      <div class="flex justify-end gap-2">
+        <button onclick="closeModal('wf-modal')" class="px-3 py-1 border rounded">Cancel</button>
+        <button onclick="startWorkflow()" class="px-3 py-1 bg-blue-600 text-white rounded">Start</button>
+      </div>
+      <p id="wf-err" class="text-red-600 text-sm mt-2 hidden"></p>
+    </div>
+  </div>
+
+  <!-- Version modal -->
+  <div id="version-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center">
+    <div class="bg-white p-6 rounded shadow w-[500px]">
+      <h3 class="text-lg font-bold mb-3">Versions</h3>
+      <ul id="version-list" class="text-sm max-h-60 overflow-y-auto mb-4"></ul>
+      <div class="flex justify-end gap-2">
+        <button onclick="closeModal('version-modal')" class="px-3 py-1 border rounded">Close</button>
+        <button onclick="addVersionFromModal()" class="px-3 py-1 bg-blue-600 text-white rounded">Add version</button>
+      </div>
+      <input id="version-file" type="file" class="hidden" onchange="doAddVersion(this)" />
+      <p id="version-err" class="text-red-600 text-sm mt-2 hidden"></p>
+    </div>
+  </div>
+
+  <script>
+    const api = (path) => `/api${path}`;
+    const FETCH_OPTS = { credentials: 'same-origin' }; // send the HttpOnly auth cookie
+    let currentUser = null;
+    let currentFolderId = null;
+    let currentDocId = null;
+    let folders = [];
+
+    // Escape values interpolated into HTML to prevent stored-XSS via user content
+    // (folder names, document titles, audit details, etc.).
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      ));
+    }
+    const val = (id) => document.getElementById(id).value;
+
+    document.addEventListener('DOMContentLoaded', bootstrap);
+
+    // ---- Network helpers --------------------------------------------------
+    async function apiFetch(path, opts = {}) {
+      const headers = { Accept: 'application/json', ...(opts.headers || {}) };
+      const resp = await fetch(api(path), { ...opts, headers, ...FETCH_OPTS });
+      if (resp.status === 401) { showLogin(); return null; }
+      if (!resp.ok) { throw new Error(await resp.text()); }
+      return resp.json().catch(() => ({}));
+    }
+
+    // ---- Session lifecycle ------------------------------------------------
+    async function bootstrap() {
+      // Rely on an existing auth cookie; otherwise show the login view.
+      try {
+        const me = await fetch(api('/auth/me'), { ...FETCH_OPTS });
+        if (me.ok) { currentUser = await me.json(); await enterApp(); return; }
+      } catch (e) { /* fall through to login */ }
+      showLogin();
+    }
+
+    async function login() {
+      const form = new URLSearchParams();
+      form.append('username', val('username'));
+      form.append('password', val('password'));
+      try {
+        const res = await fetch(api('/auth/login'), { method: 'POST', body: form, ...FETCH_OPTS });
+        if (!res.ok) throw new Error((await res.text()) || 'Login failed');
+        const me = await fetch(api('/auth/me'), { ...FETCH_OPTS });
+        currentUser = await me.json();
+        await enterApp();
+      } catch (e) {
+        const err = document.getElementById('login-err');
+        err.textContent = e.message;
+        err.classList.remove('hidden');
+      }
+    }
+
+    async function logout() {
+      try { await fetch(api('/auth/logout'), { method: 'POST', ...FETCH_OPTS }); } catch (e) { /* ignore */ }
+      currentUser = null;
+      currentFolderId = null;
+      showLogin();
+    }
+
+    async function enterApp() {
+      show('login-view', false);
+      show('top-bar', true);
+      show('main-view', true);
+      document.getElementById('user-info').textContent = `${currentUser.username} (${currentUser.role})`;
+      show('admin-btn', ['superadmin', 'admin'].includes(currentUser.role));
+      await loadFolderTree();
+      loadDocuments();
+      updateNotifBadge();
+    }
+
+    function showLogin() {
+      show('login-view', true);
+      show('main-view', false);
+      show('admin-view', false);
+      show('top-bar', false);
+      document.getElementById('login-err').classList.add('hidden');
+    }
+
+    // ---- Folder tree ------------------------------------------------------
+    async function loadFolderTree() {
+      folders = (await apiFetch('/folders/all')) || [];
+      if (currentFolderId === null) {
+        const root = folders.find((f) => f.parent_id === null);
+        currentFolderId = root ? root.id : null;
+      }
+      renderTree();
+    }
+
+    function renderTree() {
+      const el = document.getElementById('folder-tree');
+      const root = folders.find((f) => f.parent_id === null);
+      el.innerHTML = root ? treeNode(root, 0) : '<div class="text-gray-400 p-1">No folders</div>';
+    }
+
+    function treeNode(folder, depth) {
+      const selected = folder.id === currentFolderId ? 'bg-blue-100 font-semibold' : '';
+      const children = folders.filter((c) => c.parent_id === folder.id);
+      let html = `<div class="tree-item p-1 rounded ${selected}" style="padding-left:${depth * 14 + 4}px"
+                    onclick="selectFolder(${folder.id})">
+                    <i class="fa-regular fa-folder text-yellow-500 mr-1"></i>${esc(folder.name)}
+                  </div>`;
+      for (const child of children) html += treeNode(child, depth + 1);
+      return html;
+    }
+
+    async function selectFolder(id) {
+      currentFolderId = id;
+      renderTree();
+      loadDocuments();
+    }
+
+    // ---- Documents --------------------------------------------------------
+    async function loadDocuments() {
+      const docs = (await apiFetch(`/documents?folder_id=${currentFolderId}`)) || [];
+      const tbody = document.getElementById('doc-list');
+      const f = folders.find((x) => x.id === currentFolderId);
+      document.getElementById('current-folder-name').textContent = f ? f.name : 'Folder';
+      document.getElementById('breadcrumb').textContent = `Folder #${currentFolderId}`;
+      tbody.innerHTML = docs.map((d) => docRow(d, /*actions*/ true)).join('');
+      show('no-docs', docs.length === 0);
+    }
+
+    function docRow(d, fullActions) {
+      const lockBtn = d.checked_out_by
+        ? `<button onclick="checkin(${d.id})" class="text-orange-600" title="Check in"><i class="fa-solid fa-lock-open"></i></button>`
+        : `<button onclick="checkout(${d.id})" class="text-orange-600" title="Check out"><i class="fa-solid fa-lock"></i></button>`;
+      const extra = fullActions
+        ? `${lockBtn}<button onclick="deleteDoc(${d.id})" class="text-red-600" title="Delete"><i class="fa-solid fa-trash"></i></button>`
+        : '';
+      return `<tr class="border-b hover:bg-gray-50">
+        <td class="p-2">${esc(d.title)}<br><span class="text-xs text-gray-500">${esc(d.name)}</span></td>
+        <td class="p-2">${d.current_version}</td>
+        <td class="p-2"><span class="px-2 py-1 rounded text-xs ${statusColor(d.status)}">${esc(d.status)}</span></td>
+        <td class="p-2 text-sm">${formatBytes(d.size)}</td>
+        <td class="p-2 text-sm">${d.updated_at ? new Date(d.updated_at).toLocaleString() : ''}</td>
+        <td class="p-2 flex gap-1">
+          <button onclick="downloadDoc(${d.id})" class="text-blue-600" title="Download"><i class="fa-solid fa-download"></i></button>
+          <button onclick="openVersions(${d.id})" class="text-gray-600" title="Versions"><i class="fa-solid fa-code-branch"></i></button>
+          <button onclick="openMeta(${d.id})" class="text-emerald-600" title="Edit"><i class="fa-solid fa-pen"></i></button>
+          <button onclick="openComments(${d.id})" class="text-purple-600" title="Comments"><i class="fa-solid fa-comments"></i></button>
+          <button onclick="openShares(${d.id})" class="text-cyan-600" title="Share"><i class="fa-solid fa-share-nodes"></i></button>
+          <button onclick="openWorkflow(${d.id})" class="text-amber-600" title="Start workflow"><i class="fa-solid fa-diagram-project"></i></button>
+          ${extra}
+        </td>
+      </tr>`;
+    }
+
+    function statusColor(s) {
+      return {
+        draft: 'bg-gray-200', review: 'bg-yellow-200', approved: 'bg-green-200',
+        published: 'bg-blue-200', archived: 'bg-slate-300',
+      }[s] || 'bg-gray-100';
+    }
+    function formatBytes(b) {
+      if (!b) return '-';
+      const u = ['B', 'KB', 'MB', 'GB'];
+      let i = 0;
+      while (b >= 1024 && i < 3) { b /= 1024; i++; }
+      return `${b.toFixed(1)} ${u[i]}`;
+    }
+
+    // ---- Modals -----------------------------------------------------------
+    function show(id, v) { document.getElementById(id).style.display = v ? '' : 'none'; }
+    function openModal(id) { document.getElementById(id).classList.add('open'); }
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('open');
+      document.getElementById(id).querySelectorAll('p[id$="-err"]').forEach((e) => e.classList.add('hidden'));
+    }
+    async function openUploadModal() {
+      try {
+        const tpls = (await apiFetch('/metadata-templates')) || [];
+        const sel = document.getElementById('upload-template');
+        sel.innerHTML = '<option value="">No metadata template</option>' +
+          tpls.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+      } catch (e) { /* templates optional */ }
+      openModal('upload-modal');
+    }
+    function openFolderModal() { openModal('folder-modal'); }
+
+    async function uploadDoc() {
+      const files = document.getElementById('upload-file').files;
+      if (!files.length) {
+        const err = document.getElementById('upload-err');
+        err.textContent = 'Select at least one file'; err.classList.remove('hidden');
+        return;
+      }
+      const form = new FormData();
+      form.append('folder_id', currentFolderId);
+      form.append('tags', val('upload-tags'));
+      form.append('metadata', val('upload-meta') || '{}');
+      const tplId = val('upload-template');
+      if (tplId) form.append('template_id', tplId);
+      try {
+        if (files.length === 1) {
+          form.append('title', val('upload-title') || files[0].name);
+          form.append('file', files[0]);
+          await apiFetch('/documents', { method: 'POST', body: form });
+        } else {
+          for (const f of files) form.append('files', f);
+          await apiFetch('/documents/bulk', { method: 'POST', body: form });
+        }
+        closeModal('upload-modal');
+        loadDocuments();
+      } catch (e) {
+        const err = document.getElementById('upload-err');
+        err.textContent = e.message; err.classList.remove('hidden');
+      }
+    }
+
+    async function exportFolder() {
+      const resp = await fetch(api(`/folders/${currentFolderId}/export`), { ...FETCH_OPTS });
+      if (!resp.ok) { alert('Export failed'); return; }
+      const blob = await resp.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `folder_${currentFolderId}.zip`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(a.href);
+    }
+
+    async function createFolder() {
+      const name = val('folder-name');
+      if (!name) {
+        const err = document.getElementById('folder-err');
+        err.textContent = 'Name required'; err.classList.remove('hidden');
+        return;
+      }
+      const payload = { name, parent_id: currentFolderId, is_public: document.getElementById('folder-public').checked };
+      try {
+        await apiFetch('/folders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        closeModal('folder-modal');
+        document.getElementById('folder-name').value = '';
+        loadFolderTree();
+      } catch (e) {
+        const err = document.getElementById('folder-err');
+        err.textContent = e.message; err.classList.remove('hidden');
+      }
+    }
+
+    async function downloadDoc(id, version) {
+      const url = api(`/documents/${id}/download`) + (version ? `?v=${version}` : '');
+      try {
+        const resp = await fetch(url, { ...FETCH_OPTS });
+        if (!resp.ok) { alert('Download failed (' + resp.status + ')'); return; }
+        const blob = await resp.blob();
+        const cd = resp.headers.get('content-disposition') || '';
+        const m = cd.match(/filename="?([^"]+)"?/i);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = m ? m[1] : 'download';
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(a.href);
+      } catch (e) { alert('Download failed: ' + e.message); }
+    }
+
+    async function deleteDoc(id) {
+      if (!confirm('Delete this document?')) return;
+      await apiFetch(`/documents/${id}`, { method: 'DELETE' });
+      loadDocuments();
+    }
+
+    async function searchDocs() {
+      const q = document.getElementById('search-input').value;
+      const docs = (await apiFetch(`/documents?search=${encodeURIComponent(q)}`)) || [];
+      const tbody = document.getElementById('doc-list');
+      show('no-docs', false);
+      tbody.innerHTML = docs.length
+        ? docs.map((d) => docRow(d, false)).join('')
+        : '<tr><td colspan="6" class="p-4 text-center">No results</td></tr>';
+    }
+
+    // ---- Metadata ---------------------------------------------------------
+    async function openMeta(id) {
+      const d = await apiFetch(`/documents/${id}`);
+      if (!d) return;
+      currentDocId = id;
+      document.getElementById('meta-title').value = d.title;
+      document.getElementById('meta-tags').value = d.tags || '';
+      document.getElementById('meta-status').value = d.status;
+      document.getElementById('meta-json').value = JSON.stringify(d.metadata || {}, null, 2);
+      openModal('meta-modal');
+    }
+    async function saveMetadata() {
+      const form = new FormData();
+      form.append('title', val('meta-title'));
+      form.append('tags', val('meta-tags'));
+      form.append('status', val('meta-status'));
+      form.append('metadata', val('meta-json'));
+      try {
+        await apiFetch(`/documents/${currentDocId}`, { method: 'PUT', body: form });
+        closeModal('meta-modal');
+        loadDocuments();
+      } catch (e) {
+        const err = document.getElementById('meta-err');
+        err.textContent = e.message; err.classList.remove('hidden');
+      }
+    }
+
+    // ---- Checkout ---------------------------------------------------------
+    async function checkout(id) { await apiFetch(`/documents/${id}/checkout`, { method: 'POST' }); loadDocuments(); }
+    async function checkin(id) { await apiFetch(`/documents/${id}/checkin`, { method: 'POST' }); loadDocuments(); }
+
+    // ---- Versions ---------------------------------------------------------
+    async function openVersions(id) {
+      currentDocId = id;
+      const versions = (await apiFetch(`/documents/${id}/versions`)) || [];
+      const ul = document.getElementById('version-list');
+      ul.innerHTML = versions.map((v) => `
+        <li class="border-b p-2 flex justify-between items-center">
+          <span>v${v.version_number} • ${formatBytes(v.size)} • ${v.created_at ? new Date(v.created_at).toLocaleString() : ''} • ${esc(v.comment || '')}</span>
+          <div class="flex gap-2">
+            <button onclick="downloadDoc(${id}, ${v.version_number})" class="text-blue-600" title="Download this version"><i class="fa-solid fa-download"></i></button>
+            <button onclick="restoreVersion(${v.version_number})" class="text-emerald-600" title="Restore this version"><i class="fa-solid fa-rotate-left"></i></button>
+          </div>
+        </li>`).join('');
+      openModal('version-modal');
+    }
+    async function restoreVersion(vn) {
+      if (!confirm(`Restore version ${vn}?`)) return;
+      await apiFetch(`/documents/${currentDocId}/restore/${vn}`, { method: 'POST' });
+      closeModal('version-modal');
+      loadDocuments();
+    }
+    function addVersionFromModal() { document.getElementById('version-file').click(); }
+    async function doAddVersion(input) {
+      const file = input.files[0];
+      if (!file) return;
+      const form = new FormData();
+      form.append('file', file);
+      form.append('comment', 'Manual version upload');
+      try {
+        await apiFetch(`/documents/${currentDocId}/versions`, { method: 'POST', body: form });
+        closeModal('version-modal');
+        loadDocuments();
+      } catch (e) {
+        const err = document.getElementById('version-err');
+        err.textContent = e.message; err.classList.remove('hidden');
+      }
+    }
+
+    // ---- Comments ---------------------------------------------------------
+    async function openComments(id) {
+      currentDocId = id;
+      await refreshComments();
+      openModal('comments-modal');
+    }
+    async function refreshComments() {
+      const comments = (await apiFetch(`/documents/${currentDocId}/comments`)) || [];
+      document.getElementById('comment-list').innerHTML = comments.length
+        ? comments.map((c) => `<li class="border-b p-2"><b>${esc(c.username)}</b> <span class="text-gray-400 text-xs">${c.created_at ? new Date(c.created_at).toLocaleString() : ''}</span><br>${esc(c.text)}</li>`).join('')
+        : '<li class="p-2 text-gray-400">No comments yet</li>';
+    }
+    async function addComment() {
+      const text = val('comment-text');
+      if (!text) return;
+      await apiFetch(`/documents/${currentDocId}/comments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+      document.getElementById('comment-text').value = '';
+      refreshComments();
+    }
+
+    // ---- Share links --------------------------------------------------------
+    async function openShares(id) {
+      currentDocId = id;
+      await refreshShares();
+      openModal('share-modal');
+    }
+    async function refreshShares() {
+      const shares = (await apiFetch(`/documents/${currentDocId}/shares`)) || [];
+      document.getElementById('share-list').innerHTML = shares.length
+        ? shares.map((s) => `<li class="border-b p-2 flex justify-between items-center">
+            <span class="truncate"><a class="text-blue-600" href="${s.url}" target="_blank">${location.origin}${s.url}</a><br>
+            <span class="text-xs text-gray-500">${s.download_count} downloads${s.max_downloads ? '/' + s.max_downloads : ''}${s.expires_at ? ' • expires ' + new Date(s.expires_at).toLocaleDateString() : ''}</span></span>
+            <button onclick="deleteShare(${s.id})" class="text-red-600 ml-2"><i class="fa-solid fa-trash"></i></button>
+          </li>`).join('')
+        : '<li class="p-2 text-gray-400">No share links</li>';
+    }
+    async function createShare() {
+      const days = val('share-days');
+      const max = val('share-max');
+      let q = [];
+      if (days) q.push(`expires_days=${days}`);
+      if (max) q.push(`max_downloads=${max}`);
+      await apiFetch(`/documents/${currentDocId}/shares${q.length ? '?' + q.join('&') : ''}`, { method: 'POST' });
+      refreshShares();
+    }
+    async function deleteShare(id) {
+      await apiFetch(`/documents/${currentDocId}/shares/${id}`, { method: 'DELETE' });
+      refreshShares();
+    }
+
+    // ---- Workflow -----------------------------------------------------------
+    async function openWorkflow(id) {
+      currentDocId = id;
+      const wfs = (await apiFetch('/workflows')) || [];
+      const sel = document.getElementById('wf-template');
+      sel.innerHTML = wfs.length
+        ? wfs.map((w) => `<option value="${w.id}">${esc(w.name)}</option>`).join('')
+        : '<option value="">No workflow templates defined</option>';
+      openModal('wf-modal');
+    }
+    async function startWorkflow() {
+      const tplId = val('wf-template');
+      if (!tplId) return;
+      try {
+        await apiFetch(`/documents/${currentDocId}/workflows?template_id=${tplId}`, { method: 'POST' });
+        closeModal('wf-modal');
+        loadDocuments();
+      } catch (e) {
+        const err = document.getElementById('wf-err');
+        err.textContent = e.message; err.classList.remove('hidden');
+      }
+    }
+
+    // ---- Tasks & notifications ----------------------------------------------
+    async function showTasks() {
+      show('main-view', false); show('admin-view', false); show('tasks-view', true);
+      const tasks = (await apiFetch('/tasks')) || [];
+      document.getElementById('task-list').innerHTML = tasks.length
+        ? `<table class="w-full text-left text-sm border-collapse">
+            <thead><tr class="bg-gray-100"><th class="p-2">Step</th><th class="p-2">Document</th><th class="p-2">Status</th><th class="p-2">Due</th><th class="p-2">Actions</th></tr></thead>
+            <tbody>${tasks.map((t) => `<tr class="border-b">
+              <td class="p-2">${esc(t.step_name)}</td>
+              <td class="p-2">#${t.document_id}</td>
+              <td class="p-2">${esc(t.status)}</td>
+              <td class="p-2">${t.due_at ? new Date(t.due_at).toLocaleDateString() : '-'}</td>
+              <td class="p-2">${t.status === 'pending' ? `
+                <button onclick="taskAction(${t.id}, true)" class="text-green-600 mr-2" title="Approve"><i class="fa-solid fa-check"></i></button>
+                <button onclick="taskAction(${t.id}, false)" class="text-red-600" title="Reject"><i class="fa-solid fa-xmark"></i></button>` : ''}</td>
+            </tr>`).join('')}</tbody></table>`
+        : '<p class="text-gray-400">No tasks</p>';
+      const notifs = (await apiFetch('/notifications')) || [];
+      document.getElementById('notif-list').innerHTML = notifs.length
+        ? notifs.map((n) => `<div class="border-b p-2 flex justify-between items-center ${n.read ? 'text-gray-400' : ''}">
+            <span>${esc(n.message)} <span class="text-xs">${n.created_at ? new Date(n.created_at).toLocaleString() : ''}</span></span>
+            ${!n.read ? `<button onclick="markRead(${n.id})" class="text-blue-600 text-xs">Mark read</button>` : ''}
+          </div>`).join('')
+        : '<p class="text-gray-400">No notifications</p>';
+      updateNotifBadge();
+    }
+    async function taskAction(id, approved) {
+      const comment = approved ? '' : (prompt('Rejection comment (optional)') || '');
+      await apiFetch(`/tasks/${id}/action`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approved, comment }) });
+      showTasks();
+    }
+    async function markRead(id) {
+      await apiFetch(`/notifications/${id}/read`, { method: 'POST' });
+      showTasks();
+    }
+    async function updateNotifBadge() {
+      try {
+        const unread = (await apiFetch('/notifications?unread_only=true')) || [];
+        const badge = document.getElementById('notif-badge');
+        if (unread.length) { badge.textContent = unread.length; badge.classList.remove('hidden'); }
+        else badge.classList.add('hidden');
+      } catch (e) { /* ignore */ }
+    }
+
+    // ---- Admin ------------------------------------------------------------
+    function showAdmin() { show('main-view', false); show('tasks-view', false); show('admin-view', true); adminTab('users'); }
+    function showMain() { show('admin-view', false); show('tasks-view', false); show('main-view', true); loadDocuments(); }
+
+    async function adminTab(tab) {
+      const content = document.getElementById('admin-content');
+      if (tab === 'users') {
+        const users = (await apiFetch('/users')) || [];
+        content.innerHTML = `
+          <h3 class="font-bold mb-2">Users</h3>
+          <table class="w-full text-left border-collapse">
+            <thead><tr class="bg-gray-100"><th class="p-2">Username</th><th class="p-2">Role</th><th class="p-2">Active</th><th class="p-2">Created</th></tr></thead>
+            <tbody>${users.map((u) => `<tr class="border-b"><td class="p-2">${esc(u.username)}</td><td class="p-2">${esc(u.role)}</td><td class="p-2">${u.is_active}</td><td class="p-2">${u.created_at ? new Date(u.created_at).toLocaleString() : ''}</td></tr>`).join('')}</tbody>
+          </table>`;
+      } else if (tab === 'groups') {
+        const groups = (await apiFetch('/groups')) || [];
+        content.innerHTML = `
+          <h3 class="font-bold mb-2">Groups</h3>
+          <ul class="list-disc pl-5">${groups.map((g) => `<li>${esc(g.name)} — ${esc(g.description || '')}</li>`).join('')}</ul>`;
+      } else if (tab === 'templates') {
+        const tpls = (await apiFetch('/metadata-templates')) || [];
+        content.innerHTML = `
+          <h3 class="font-bold mb-2">Metadata templates</h3>
+          <div class="flex gap-2 mb-3">
+            <input id="tpl-name" placeholder="Name" class="border p-2 rounded" />
+            <input id="tpl-desc" placeholder="Description" class="border p-2 rounded flex-1" />
+            <input id="tpl-fields" placeholder='Fields JSON e.g. [{"key":"customer","default":""}]' class="border p-2 rounded flex-1" />
+            <button onclick="createTemplate()" class="px-3 py-1 bg-blue-600 text-white rounded">Add</button>
+          </div>
+          <table class="w-full text-left border-collapse text-sm">
+            <thead><tr class="bg-gray-100"><th class="p-2">Name</th><th class="p-2">Description</th><th class="p-2">Fields</th><th class="p-2"></th></tr></thead>
+            <tbody>${tpls.map((t) => `<tr class="border-b"><td class="p-2">${esc(t.name)}</td><td class="p-2">${esc(t.description || '')}</td><td class="p-2 text-xs">${esc(JSON.stringify(t.fields || []))}</td><td class="p-2"><button onclick="delTemplate(${t.id})" class="text-red-600"><i class="fa-solid fa-trash"></i></button></td></tr>`).join('')}</tbody>
+          </table>`;
+      } else if (tab === 'imports') {
+        const imps = (await apiFetch('/import/folders')) || [];
+        content.innerHTML = `
+          <h3 class="font-bold mb-2">Watched import folders</h3>
+          <div class="flex gap-2 mb-3 flex-wrap">
+            <input id="imp-name" placeholder="Name" class="border p-2 rounded" />
+            <input id="imp-path" placeholder="Local path e.g. C:\\\\watched" class="border p-2 rounded flex-1" />
+            <input id="imp-target" type="number" placeholder="Target folder id" class="border p-2 rounded w-40" />
+            <label class="flex items-center gap-1 text-sm"><input id="imp-del" type="checkbox" /> Move (delete source)</label>
+            <button onclick="createImport()" class="px-3 py-1 bg-blue-600 text-white rounded">Add</button>
+          </div>
+          <div class="mb-3">
+            <h4 class="font-semibold text-sm mb-1">Email import (IMAP)</h4>
+            <div class="flex gap-2 flex-wrap">
+              <input id="em-host" placeholder="IMAP host" class="border p-2 rounded" />
+              <input id="em-user" placeholder="Email user" class="border p-2 rounded" />
+              <input id="em-pass" type="password" placeholder="Password" class="border p-2 rounded" />
+              <input id="em-target" type="number" placeholder="Target folder id" class="border p-2 rounded w-40" />
+              <button onclick="runEmailImport()" class="px-3 py-1 bg-emerald-600 text-white rounded">Import attachments</button>
+            </div>
+          </div>
+          <table class="w-full text-left border-collapse text-sm">
+            <thead><tr class="bg-gray-100"><th class="p-2">Name</th><th class="p-2">Path</th><th class="p-2">Target</th><th class="p-2">Last scan</th><th class="p-2">Actions</th></tr></thead>
+            <tbody>${imps.map((i) => `<tr class="border-b"><td class="p-2">${esc(i.name)}</td><td class="p-2">${esc(i.local_path)}</td><td class="p-2">#${i.target_folder_id}</td><td class="p-2">${i.last_scan ? new Date(i.last_scan).toLocaleString() : 'never'}</td><td class="p-2">
+              <button onclick="scanImport(${i.id})" class="text-emerald-600 mr-2" title="Scan now"><i class="fa-solid fa-arrows-rotate"></i></button>
+              <button onclick="delImport(${i.id})" class="text-red-600"><i class="fa-solid fa-trash"></i></button></td></tr>`).join('')}</tbody>
+          </table>`;
+      } else if (tab === 'retention') {
+        const pols = (await apiFetch('/retention-policies')) || [];
+        content.innerHTML = `
+          <h3 class="font-bold mb-2">Retention policies</h3>
+          <div class="flex gap-2 mb-3">
+            <input id="ret-name" placeholder="Name" class="border p-2 rounded" />
+            <input id="ret-folder" type="number" placeholder="Folder id (blank = all)" class="border p-2 rounded w-48" />
+            <input id="ret-years" type="number" placeholder="Years" value="7" class="border p-2 rounded w-24" />
+            <select id="ret-action" class="border p-2 rounded"><option value="archive">archive</option><option value="delete">delete</option></select>
+            <button onclick="createPolicy()" class="px-3 py-1 bg-blue-600 text-white rounded">Add</button>
+            <button onclick="applyPolicies()" class="px-3 py-1 bg-amber-600 text-white rounded ml-auto">Apply now</button>
+          </div>
+          <table class="w-full text-left border-collapse text-sm">
+            <thead><tr class="bg-gray-100"><th class="p-2">Name</th><th class="p-2">Folder</th><th class="p-2">Years</th><th class="p-2">Action</th><th class="p-2"></th></tr></thead>
+            <tbody>${pols.map((p) => `<tr class="border-b"><td class="p-2">${esc(p.name)}</td><td class="p-2">${p.folder_id ? '#' + p.folder_id : 'all'}</td><td class="p-2">${p.years}</td><td class="p-2">${esc(p.action)}</td><td class="p-2"><button onclick="delPolicy(${p.id})" class="text-red-600"><i class="fa-solid fa-trash"></i></button></td></tr>`).join('')}</tbody>
+          </table>`;
+      } else if (tab === 'workflows') {
+        const wfs = (await apiFetch('/workflows')) || [];
+        content.innerHTML = `
+          <h3 class="font-bold mb-2">Workflow templates</h3>
+          <div class="flex gap-2 mb-3">
+            <input id="wf-name" placeholder="Name" class="border p-2 rounded" />
+            <input id="wf-desc" placeholder="Description" class="border p-2 rounded" />
+            <input id="wf-steps" placeholder='Steps JSON e.g. [{"name":"Manager review","assignee_role":"admin","due_days":3}]' class="border p-2 rounded flex-1" />
+            <button onclick="createWorkflowTpl()" class="px-3 py-1 bg-blue-600 text-white rounded">Add</button>
+          </div>
+          <table class="w-full text-left border-collapse text-sm">
+            <thead><tr class="bg-gray-100"><th class="p-2">Name</th><th class="p-2">Description</th><th class="p-2">Steps</th><th class="p-2"></th></tr></thead>
+            <tbody>${wfs.map((w) => `<tr class="border-b"><td class="p-2">${esc(w.name)}</td><td class="p-2">${esc(w.description || '')}</td><td class="p-2 text-xs">${esc(JSON.stringify(w.steps || []))}</td><td class="p-2"><button onclick="delWorkflowTpl(${w.id})" class="text-red-600"><i class="fa-solid fa-trash"></i></button></td></tr>`).join('')}</tbody>
+          </table>`;
+      } else if (tab === 'reports') {
+        const r = await apiFetch('/reports/summary');
+        const facets = await apiFetch('/facets');
+        content.innerHTML = `
+          <h3 class="font-bold mb-2">Reports</h3>
+          <div class="grid grid-cols-4 gap-3 mb-4">
+            ${[['Users', r.users], ['Groups', r.groups], ['Folders', r.folders], ['Documents', r.documents]].map(([k, v]) => `<div class="bg-gray-50 border rounded p-3 text-center"><div class="text-2xl font-bold">${v}</div><div class="text-sm text-gray-500">${k}</div></div>`).join('')}
+          </div>
+          <p class="mb-2"><b>Total storage:</b> ${formatBytes(r.total_size)} • <b>Downloads (30d):</b> ${r.recent_downloads}</p>
+          <p class="mb-2"><b>By status:</b> ${Object.entries(r.by_status).map(([k, v]) => `${esc(k)}: ${v}`).join(', ') || 'none'}</p>
+          <p class="mb-2"><b>Top uploaders:</b> ${r.top_uploaders.map((u) => `${esc(u.username)} (${u.documents})`).join(', ') || 'none'}</p>
+          <p class="mb-2"><b>By type:</b> ${Object.entries(facets.by_extension).map(([k, v]) => `${esc(k)}: ${v}`).join(', ') || 'none'}</p>
+          <p><b>Tags:</b> ${Object.entries(facets.by_tag).map(([k, v]) => `${esc(k)} (${v})`).join(', ') || 'none'}</p>`;
+      } else if (tab === 'backup') {
+        const backups = (await apiFetch('/backup')) || [];
+        content.innerHTML = `
+          <h3 class="font-bold mb-2">Backups</h3>
+          <button onclick="runBackup()" class="px-3 py-1 bg-blue-600 text-white rounded mb-3">Create backup now</button>
+          <ul class="text-sm">${backups.length ? backups.map((b) => `<li class="border-b p-2">${esc(b.file)} — ${formatBytes(b.size)}</li>`).join('') : '<li class="text-gray-400 p-2">No backups yet</li>'}</ul>`;
+      } else if (tab === 'audit') {
+        const logs = (await apiFetch('/audit')) || [];
+        content.innerHTML = `
+          <h3 class="font-bold mb-2">Audit log</h3>
+          <table class="w-full text-left border-collapse text-sm">
+            <thead><tr class="bg-gray-100"><th class="p-2">Action</th><th class="p-2">Resource</th><th class="p-2">Details</th><th class="p-2">Time</th></tr></thead>
+            <tbody>${logs.map((l) => `<tr class="border-b"><td class="p-2">${esc(l.action)}</td><td class="p-2">${esc(l.resource_type || '')} ${l.resource_id || ''}</td><td class="p-2">${esc((l.details || '').slice(0, 80))}</td><td class="p-2">${l.timestamp ? new Date(l.timestamp).toLocaleString() : ''}</td></tr>`).join('')}</tbody>
+          </table>`;
+      }
+    }
+
+    // ---- Admin actions ------------------------------------------------------
+    async function createTemplate() {
+      try {
+        const fields = val('tpl-fields') ? JSON.parse(val('tpl-fields')) : [];
+        await apiFetch('/metadata-templates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: val('tpl-name'), description: val('tpl-desc'), fields }) });
+        adminTab('templates');
+      } catch (e) { alert(e.message); }
+    }
+    async function delTemplate(id) { await apiFetch(`/metadata-templates/${id}`, { method: 'DELETE' }); adminTab('templates'); }
+
+    async function createImport() {
+      try {
+        await apiFetch('/import/folders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          name: val('imp-name'), local_path: val('imp-path'),
+          target_folder_id: parseInt(val('imp-target'), 10),
+          delete_after_import: document.getElementById('imp-del').checked }) });
+        adminTab('imports');
+      } catch (e) { alert(e.message); }
+    }
+    async function scanImport(id) {
+      try {
+        const r = await apiFetch(`/import/folders/${id}/scan`, { method: 'POST' });
+        alert(`Scanned ${r.scanned} files, imported ${r.imported}`);
+        adminTab('imports');
+      } catch (e) { alert(e.message); }
+    }
+    async function delImport(id) { await apiFetch(`/import/folders/${id}`, { method: 'DELETE' }); adminTab('imports'); }
+    async function runEmailImport() {
+      try {
+        const r = await apiFetch('/import/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          host: val('em-host'), username: val('em-user'), password: val('em-pass'),
+          target_folder_id: parseInt(val('em-target'), 10) }) });
+        alert(`Imported ${r.imported} attachments`);
+      } catch (e) { alert(e.message); }
+    }
+
+    async function createPolicy() {
+      try {
+        await apiFetch('/retention-policies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          name: val('ret-name'), folder_id: val('ret-folder') ? parseInt(val('ret-folder'), 10) : null,
+          years: parseInt(val('ret-years'), 10) || 7, action: val('ret-action') }) });
+        adminTab('retention');
+      } catch (e) { alert(e.message); }
+    }
+    async function delPolicy(id) { await apiFetch(`/retention-policies/${id}`, { method: 'DELETE' }); adminTab('retention'); }
+    async function applyPolicies() {
+      if (!confirm('Apply all retention policies now?')) return;
+      const r = await apiFetch('/retention-policies/apply', { method: 'POST' });
+      alert(`Affected ${r.affected} documents`);
+      adminTab('retention');
+    }
+
+    async function createWorkflowTpl() {
+      try {
+        const steps = val('wf-steps') ? JSON.parse(val('wf-steps')) : [];
+        await apiFetch('/workflows', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: val('wf-name'), description: val('wf-desc'), steps }) });
+        adminTab('workflows');
+      } catch (e) { alert(e.message); }
+    }
+    async function delWorkflowTpl(id) { await apiFetch(`/workflows/${id}`, { method: 'DELETE' }); adminTab('workflows'); }
+
+    async function runBackup() {
+      const r = await apiFetch('/backup', { method: 'POST' });
+      alert(`Backup ${r.file} created (${r.files} files)`);
+      adminTab('backup');
+    }
+  </script>
+</body>
+</html>

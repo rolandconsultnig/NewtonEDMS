@@ -1,0 +1,213 @@
+"""Extra features: faceted search, archive export, backup, shared calendar."""
+from __future__ import annotations
+
+import zipfile
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
+
+from app import database
+from app.audit import audit
+from app.database import DB_PATH, get_db, now
+from app.models import CalendarEvent, Document, Folder, User
+from app.permissions import has_permission, readable_folder_ids
+from app.schemas import CalendarEventCreate, CalendarEventOut, FacetsOut
+from app.security import get_current_user, require_role
+
+router = APIRouter(prefix="/api", tags=["extras"])
+
+
+# ---------------------------------------------------------------------------
+# Faceted navigation
+# ---------------------------------------------------------------------------
+@router.get("/facets", response_model=FacetsOut)
+def facets(
+    folder_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    q = db.query(Document)
+    if folder_id is not None:
+        q = q.filter(Document.folder_id == folder_id)
+    if user.role not in ("superadmin", "admin"):
+        folders = readable_folder_ids(db, user)
+        cond = Document.created_by == user.id
+        if folders:
+            cond = cond | Document.folder_id.in_(folders)
+        q = q.filter(cond)
+    docs = q.all()
+
+    by_status: dict[str, int] = {}
+    by_mime: dict[str, int] = {}
+    by_tag: dict[str, int] = {}
+    by_extension: dict[str, int] = {}
+    for d in docs:
+        by_status[d.status] = by_status.get(d.status, 0) + 1
+        mime = (d.mime or "unknown").split(";")[0]
+        by_mime[mime] = by_mime.get(mime, 0) + 1
+        ext = Path(d.name).suffix.lower() or "none"
+        by_extension[ext] = by_extension.get(ext, 0) + 1
+        for tag in (d.tags or "").split(","):
+            tag = tag.strip()
+            if tag:
+                by_tag[tag] = by_tag.get(tag, 0) + 1
+
+    return {
+        "total": len(docs),
+        "by_status": by_status,
+        "by_mime": by_mime,
+        "by_tag": by_tag,
+        "by_extension": by_extension,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Archive export (zip of a folder subtree)
+# ---------------------------------------------------------------------------
+def _collect_subtree(db: Session, folder: Folder) -> list[Folder]:
+    result = [folder]
+    children = db.query(Folder).filter(Folder.parent_id == folder.id).all()
+    for c in children:
+        result.extend(_collect_subtree(db, c))
+    return result
+
+
+@router.get("/folders/{folder_id}/export")
+def export_folder(
+    folder_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    f = db.get(Folder, folder_id)
+    if not f:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    if not has_permission(db, user, "read", f):
+        raise HTTPException(status_code=403, detail="No permission")
+
+    folders = _collect_subtree(db, f)
+    paths = {fo.id: fo.name for fo in folders}
+    # Build relative paths for nested folders
+    rel: dict[int, str] = {}
+
+    def rel_path(fo: Folder) -> str:
+        if fo.id in rel:
+            return rel[fo.id]
+        if fo.id == f.id or fo.parent_id not in paths:
+            rel[fo.id] = fo.name
+        else:
+            parent = next(x for x in folders if x.id == fo.parent_id)
+            rel[fo.id] = rel_path(parent) + "/" + fo.name
+        return rel[fo.id]
+
+    export_dir = database.STORAGE_DIR / "exports"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    zip_path = export_dir / f"folder_{folder_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.zip"
+
+    count = 0
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fo in folders:
+            docs = db.query(Document).filter(Document.folder_id == fo.id).all()
+            for d in docs:
+                p = Path(d.file_path)
+                if p.exists():
+                    zf.write(p, arcname=f"{rel_path(fo)}/{d.name}")
+                    count += 1
+
+    audit(db, user, "FOLDER_EXPORT", "folder", folder_id, f"Exported {count} documents")
+    return FileResponse(zip_path, filename=zip_path.name, media_type="application/zip")
+
+
+# ---------------------------------------------------------------------------
+# Backup (database + storage manifest)
+# ---------------------------------------------------------------------------
+@router.post("/backup")
+def create_backup(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("superadmin", "admin")),
+):
+    backup_dir = database.STORAGE_DIR / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    zip_path = backup_dir / f"backup_{stamp}.zip"
+
+    files = 0
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        if DB_PATH.exists():
+            zf.write(DB_PATH, arcname="edms.db")
+            files += 1
+        docs_root = database.STORAGE_DIR / "documents"
+        if docs_root.exists():
+            for p in docs_root.rglob("*"):
+                if p.is_file():
+                    zf.write(p, arcname=str(p.relative_to(database.STORAGE_DIR)))
+                    files += 1
+
+    audit(db, user, "BACKUP_CREATE", None, None, f"Backup {zip_path.name} with {files} files")
+    return {"ok": True, "file": zip_path.name, "files": files, "size": zip_path.stat().st_size}
+
+
+@router.get("/backup")
+def list_backups(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("superadmin", "admin")),
+):
+    backup_dir = database.STORAGE_DIR / "backups"
+    if not backup_dir.exists():
+        return []
+    return [
+        {"file": p.name, "size": p.stat().st_size, "created": p.stat().st_mtime}
+        for p in sorted(backup_dir.glob("backup_*.zip"), reverse=True)
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Shared calendar
+# ---------------------------------------------------------------------------
+@router.get("/calendar", response_model=list[CalendarEventOut])
+def list_events(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return db.query(CalendarEvent).order_by(CalendarEvent.start_at).all()
+
+
+@router.post("/calendar", response_model=CalendarEventOut)
+def create_event(
+    payload: CalendarEventCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    e = CalendarEvent(
+        title=payload.title,
+        description=payload.description,
+        start_at=payload.start_at,
+        end_at=payload.end_at,
+        document_id=payload.document_id,
+        created_by=user.id,
+    )
+    db.add(e)
+    db.commit()
+    db.refresh(e)
+    audit(db, user, "CALENDAR_CREATE", "calendar_event", e.id, e.title)
+    return e
+
+
+@router.delete("/calendar/{event_id}")
+def delete_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    e = db.get(CalendarEvent, event_id)
+    if not e:
+        raise HTTPException(status_code=404, detail="Event not found")
+    if e.created_by != user.id and user.role not in ("superadmin", "admin"):
+        raise HTTPException(status_code=403, detail="Not your event")
+    db.delete(e)
+    db.commit()
+    audit(db, user, "CALENDAR_DELETE", "calendar_event", event_id, e.title)
+    return {"ok": True}
