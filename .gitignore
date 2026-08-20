@@ -34,7 +34,12 @@ docspell-master.zip
 
 # Local-only artifacts
 .vscode/
+.idea/
+.DS_Store
+*.log
+logs/
 cookies.txt
 .deploy-adminpw
 abstract-background-with-lines-and-colors-vector.jpg
 /test.docx
+test_hello.txt

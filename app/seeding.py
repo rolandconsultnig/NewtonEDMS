@@ -9,7 +9,7 @@ from app.branding import DEFAULT_COLLECTIVE, PRODUCT_NAME
 from app.config import settings
 from app.models import Collective, Folder, Tag, User
 from app.schema_upgrade import ensure_columns
-from app.security import pwd_context
+from app.security import get_password_hash
 import secrets
 
 _DEFAULT_TAGS = (
@@ -50,7 +50,7 @@ def init_db() -> None:
             admin = User(
                 username=settings.seed_admin_username,
                 email="admin@newtonedms.local",
-                hashed_password=pwd_context.hash(settings.seed_admin_password),
+                hashed_password=get_password_hash(settings.seed_admin_password),
                 role="superadmin",
                 is_active=True,
                 collective_id=collective.id,
