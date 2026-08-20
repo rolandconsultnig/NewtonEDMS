@@ -10,6 +10,7 @@ from app.config import settings
 from app.models import Collective, Folder, Tag, User
 from app.schema_upgrade import ensure_columns
 from app.security import get_password_hash
+from sqlalchemy.exc import IntegrityError
 import secrets
 
 _DEFAULT_TAGS = (
@@ -40,37 +41,55 @@ def init_db() -> None:
                 settings={"preview_dpi": 96},
             )
             db.add(collective)
-            db.commit()
-            db.refresh(collective)
+            try:
+                db.commit()
+                db.refresh(collective)
+            except IntegrityError:
+                db.rollback()
+                collective = db.query(Collective).filter(Collective.name == DEFAULT_COLLECTIVE).first()
         if collective and not collective.invite_code:
             collective.invite_code = secrets.token_urlsafe(12)
-            db.commit()
+            try:
+                db.commit()
+            except IntegrityError:
+                db.rollback()
 
-        if not db.query(User).first():
+        admin = db.query(User).filter(User.username == settings.seed_admin_username).first()
+        if not admin:
             admin = User(
                 username=settings.seed_admin_username,
                 email="admin@newtonedms.local",
                 hashed_password=get_password_hash(settings.seed_admin_password),
                 role="superadmin",
                 is_active=True,
-                collective_id=collective.id,
+                collective_id=collective.id if collective else None,
             )
             db.add(admin)
-            db.commit()
-            db.refresh(admin)
+            try:
+                db.commit()
+                db.refresh(admin)
+            except IntegrityError:
+                db.rollback()
+                admin = db.query(User).filter(User.username == settings.seed_admin_username).first()
         if not db.query(Folder).filter(Folder.parent_id.is_(None)).first():
             admin = (
                 db.query(User)
                 .filter(User.username == settings.seed_admin_username)
                 .first()
             )
-            root = Folder(name="Root", parent_id=None, is_public=True, created_by=admin.id)
+            root = Folder(name="Root", parent_id=None, is_public=True, created_by=admin.id if admin else None)
             db.add(root)
-            db.commit()
+            try:
+                db.commit()
+            except IntegrityError:
+                db.rollback()
         if not db.query(Tag).first():
             admin = db.query(User).filter(User.username == settings.seed_admin_username).first()
             for name, category in _DEFAULT_TAGS:
                 db.add(Tag(name=name, category=category, created_by=admin.id if admin else None))
-            db.commit()
+            try:
+                db.commit()
+            except IntegrityError:
+                db.rollback()
     finally:
         db.close()
