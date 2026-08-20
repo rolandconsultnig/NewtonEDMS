@@ -160,7 +160,7 @@ async function renderEntTab(tab) {
       <div id="rp-out" class="text-xs mt-2"></div>
       <div id="rp-chart" class="mt-2"></div>`;
   } else if (tab === "office") {
-    const info = (await apiFetch("/api/office/addin/info")) || {};
+    const info = (await apiFetch("/office/addin/info")) || {};
     content.innerHTML = `
       <div style="padding:4px">
         <h3 class="font-bold text-base mb-1"><i class="fa-solid fa-file-word text-blue-600"></i> Microsoft Office Integration</h3>

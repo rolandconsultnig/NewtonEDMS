@@ -1,5 +1,5 @@
 /* NewtonEDMS SPA. */
-const api = (path) => `/api${path}`;
+const api = (path) => (path.startsWith("/api") ? path : `/api${path.startsWith("/") ? "" : "/"}${path}`);
 const FETCH_OPTS = { credentials: "same-origin" };
 
 let currentUser = null;

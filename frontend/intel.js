@@ -455,5 +455,5 @@ sendComposedMail = async function () {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  setTimeout(loadIntel, 400);
+  if (currentUser) setTimeout(loadIntel, 400);
 });
