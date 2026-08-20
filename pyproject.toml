@@ -1,7 +1,7 @@
 [project]
-name = "newedms"
-version = "0.1.0"
-description = "Enterprise Document Management System (FastAPI)"
+name = "newtonedms"
+version = "1.0.0"
+description = "NewtonEDMS — LogicalDoc + Docspell fusion (FastAPI)"
 requires-python = ">=3.12"
 
 [tool.ruff]

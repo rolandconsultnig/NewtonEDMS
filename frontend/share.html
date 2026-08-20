@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NewtonEDMS share</title>
+  <link rel="manifest" href="/static/manifest.webmanifest" />
+  <link rel="icon" href="/static/favicon.svg" />
+  <style>
+    body { font-family: sans-serif; max-width: 28rem; margin: 2rem auto; padding: 1rem; }
+    input, button, select { display: block; width: 100%; margin: .5rem 0; padding: .6rem; }
+  </style>
+</head>
+<body>
+  <h1>NewtonEDMS</h1>
+  <p>Share / upload to an open source URL.</p>
+  <label>Source token</label>
+  <input id="token" placeholder="from your open upload URL" />
+  <input id="file" type="file" multiple />
+  <button onclick="send()">Upload</button>
+  <p id="msg"></p>
+  <script>
+    async function send() {
+      const token = document.getElementById("token").value.trim();
+      const files = document.getElementById("file").files;
+      const msg = document.getElementById("msg");
+      if (!token || !files.length) { msg.textContent = "Token and file required"; return; }
+      for (const f of files) {
+        const fd = new FormData();
+        fd.append("file", f);
+        const r = await fetch("/api/v1/open/upload/item/" + encodeURIComponent(token), { method: "POST", body: fd });
+        const t = await r.text();
+        msg.textContent = r.ok ? "Uploaded " + f.name : t;
+        if (!r.ok) break;
+      }
+    }
+    const params = new URLSearchParams(location.search);
+    if (params.get("token")) document.getElementById("token").value = params.get("token");
+  </script>
+</body>
+</html>

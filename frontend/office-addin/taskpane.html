@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NewtonEDMS Office Integration</title>
+  <!-- Office.js library -->
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <link rel="stylesheet" href="/static/fontawesome/all.min.css">
+  <link rel="stylesheet" href="/static/office-addin/taskpane.css">
+</head>
+<body>
+
+  <div class="header">
+    <div class="brand">
+      <i class="fa-solid fa-folder-tree"></i>
+      <span>NewtonEDMS</span>
+    </div>
+    <span class="host-badge" id="host-type">Office 365</span>
+  </div>
+
+  <div class="nav-tabs">
+    <button class="nav-tab active" data-tab="explorer" onclick="showTab('explorer')">
+      <i class="fa-solid fa-folder-open"></i>
+      <span>Explorer</span>
+    </button>
+    <button class="nav-tab" data-tab="save" onclick="showTab('save')">
+      <i class="fa-solid fa-cloud-arrow-up"></i>
+      <span>Save to DMS</span>
+    </button>
+    <button class="nav-tab" data-tab="insert" onclick="showTab('insert')">
+      <i class="fa-solid fa-paste"></i>
+      <span>Insert</span>
+    </button>
+    <button class="nav-tab" data-tab="outlook" id="outlook-tab-btn" onclick="showTab('outlook')">
+      <i class="fa-solid fa-envelope"></i>
+      <span>Archive</span>
+    </button>
+    <button class="nav-tab" data-tab="meta" onclick="showTab('meta')">
+      <i class="fa-solid fa-tags"></i>
+      <span>Props</span>
+    </button>
+  </div>
+
+  <!-- TAB 1: REPOSITORY EXPLORER -->
+  <div class="tab-content active" id="tab-explorer">
+    <div class="form-group">
+      <input type="search" id="search-box" placeholder="Search NewtonEDMS documents…" onkeydown="if(event.key==='Enter')searchDocs()">
+    </div>
+    <div class="form-group">
+      <select id="folder-filter" onchange="loadDocs(this.value)">
+        <option value="">All Folders (Root)</option>
+      </select>
+    </div>
+    <div class="item-list" id="doc-results">
+      <div style="text-align:center;padding:20px;color:var(--text-muted)">
+        <i class="fa-solid fa-spinner fa-spin"></i> Loading repository…
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2: SAVE TO NEWTONEDMS -->
+  <div class="tab-content" id="tab-save">
+    <div class="alert alert-info">
+      <i class="fa-solid fa-circle-info"></i>
+      <span>Save the active document directly into NewtonEDMS repository.</span>
+    </div>
+    <div class="form-group">
+      <label>Destination Folder</label>
+      <select id="save-folder-select"></select>
+    </div>
+    <div class="form-group">
+      <label>Document Title / Filename</label>
+      <input type="text" id="save-title" placeholder="Document Name (e.g. Contract.docx)">
+    </div>
+    <div class="form-group">
+      <label>Tags (comma separated)</label>
+      <input type="text" id="save-tags" placeholder="legal, contract, 2026">
+    </div>
+    <div class="form-group">
+      <label>Version Note</label>
+      <textarea id="save-comment" rows="2" placeholder="Saved from Microsoft Office Add-in"></textarea>
+    </div>
+    <button class="btn" id="btn-save-doc" onclick="saveActiveDocument()"><i class="fa-solid fa-floppy-disk"></i> Save & Check-In</button>
+    <div id="save-status" style="margin-top:10px"></div>
+  </div>
+
+  <!-- TAB 3: INSERT CONTENT / METADATA -->
+  <div class="tab-content" id="tab-insert">
+    <div class="card">
+      <div class="card-title">Insert Metadata Field</div>
+      <div class="card-sub">Insert standard NewtonEDMS dynamic fields into document cursor</div>
+      <div class="form-group" style="margin-top:10px">
+        <select id="meta-field-select">
+          <option value="NewtonEDMS — Document Management">System Watermark</option>
+          <option value="DocID: #1042">Document ID Stamp</option>
+          <option value="Confidential & Proprietary">Classification Notice</option>
+          <option value="Approved via NewtonEDMS Workflow">Approval Stamp</option>
+        </select>
+      </div>
+      <button class="btn btn-secondary" onclick="insertSelectedMetadata()"><i class="fa-solid fa-arrow-down-to-bracket"></i> Insert Field</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Insert Repository Snippet</div>
+      <div class="card-sub">Choose a document from NewtonEDMS to insert its text content</div>
+      <div class="form-group" style="margin-top:10px">
+        <select id="snippet-doc-select"></select>
+      </div>
+      <button class="btn btn-secondary" onclick="insertSnippet()"><i class="fa-solid fa-quote-left"></i> Insert Text</button>
+    </div>
+  </div>
+
+  <!-- TAB 4: OUTLOOK ARCHIVER -->
+  <div class="tab-content" id="tab-outlook">
+    <div class="alert alert-info">
+      <i class="fa-solid fa-envelope"></i>
+      <span>Archive active Outlook email and attachments to NewtonEDMS.</span>
+    </div>
+    <div class="card">
+      <div class="card-title" id="mail-subject">No email selected</div>
+      <div class="card-sub" id="mail-from"></div>
+    </div>
+    <div class="form-group">
+      <label>Destination Folder</label>
+      <select id="outlook-folder-select"></select>
+    </div>
+    <div class="form-group">
+      <label>Tags</label>
+      <input type="text" id="outlook-tags" value="email, outlook, archive">
+    </div>
+    <button class="btn" onclick="archiveCurrentMail()"><i class="fa-solid fa-box-archive"></i> Archive to NewtonEDMS</button>
+    <div id="outlook-status" style="margin-top:10px"></div>
+  </div>
+
+  <!-- TAB 5: PROPERTIES INSPECTOR -->
+  <div class="tab-content" id="tab-meta">
+    <div class="card">
+      <div class="card-title">Office OpenXML Properties</div>
+      <div class="card-sub">Core & custom metadata synchronized with repository</div>
+      <div style="margin-top:10px" id="office-props-list">
+        <p style="color:var(--text-muted)">Select a document in the Explorer to inspect its OpenXML properties.</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/office-addin/taskpane.js"></script>
+</body>
+</html>

@@ -1,0 +1,225 @@
+/* Split navy landing / login */
+:root {
+  --yh-navy: #0a2547;
+  --yh-navy-deep: #061a33;
+  --yh-accent: #93c5fd;
+  --yh-ink: #232a31;
+  --yh-muted: #5b636a;
+  --yh-line: #e0e4e9;
+  --yh-sans: "Aptos", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --yh-display: "Aptos Display", "Aptos", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+}
+
+body:not(.in-app) {
+  height: 100vh;
+  overflow: hidden;
+  display: block;
+  background: #fff;
+}
+
+#login-view.yh {
+  display: block;
+  flex: none;
+  height: 100vh;
+  background: #fff;
+  color: var(--yh-ink);
+  font-family: var(--yh-sans);
+}
+
+.yh-split {
+  display: grid;
+  grid-template-columns: 1.15fr .85fr;
+  height: 100%;
+  min-height: 0;
+}
+
+.yh-pane-story {
+  position: relative;
+  background: var(--yh-navy);
+  color: #fff;
+  padding: 36px 44px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  z-index: 0;
+}
+.yh-pane-story > *:not(.yh-bubbles) { position: relative; z-index: 1; }
+.yh-bubbles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+.yh-bubbles span {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.18), rgba(147,197,253,.08) 45%, rgba(255,255,255,.04));
+  border: 1px solid rgba(255,255,255,.16);
+}
+.yh-bubbles span:nth-child(1) {
+  width: 420px;
+  height: 420px;
+  top: -120px;
+  right: -90px;
+}
+.yh-bubbles span:nth-child(2) {
+  width: 300px;
+  height: 300px;
+  bottom: -40px;
+  left: -90px;
+}
+.yh-bubbles span:nth-child(3) {
+  width: 220px;
+  height: 220px;
+  top: 42%;
+  right: 18%;
+}
+.yh-pane-story .yh-wordmark {
+  font: 600 26px/1.1 var(--yh-display);
+  letter-spacing: 0;
+  text-transform: none;
+  color: #fff;
+  text-decoration: none;
+  margin-bottom: 22px;
+}
+.yh-hero {
+  width: 100%;
+  height: 220px;
+  object-fit: cover;
+  display: block;
+  background: var(--yh-navy-deep);
+}
+.yh-kicker {
+  display: inline-block;
+  margin-top: 16px;
+  color: var(--yh-accent);
+  font: 600 15px/1.35 var(--yh-display);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.yh-pane-story h1 {
+  margin: 6px 0 8px;
+  font: 600 32px/1.2 var(--yh-display);
+  letter-spacing: 0;
+}
+.yh-lead-copy {
+  margin: 0 0 20px;
+  font-size: 15px;
+  opacity: .92;
+  max-width: 36rem;
+}
+.yh-points {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.yh-points article { margin: 0; }
+.yh-points h2 { margin: 0 0 4px; font: 600 17px/1.3 var(--yh-display); }
+.yh-points p { margin: 0; font-size: 13px; opacity: .9; }
+.yh-mini {
+  margin: 22px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  opacity: .9;
+}
+.yh-mini li {
+  padding: 5px 0 5px 14px;
+  position: relative;
+}
+.yh-mini li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 11px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--yh-accent);
+}
+
+.yh-pane-login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 28px;
+  background: #fff;
+}
+.yh-login {
+  width: 100%;
+  max-width: 360px;
+}
+.yh-login h2 {
+  margin: 0 0 4px;
+  font: 600 26px/1.2 var(--yh-display);
+  color: var(--yh-ink);
+}
+.yh-login .sub {
+  margin: 0 0 20px;
+  color: var(--yh-muted);
+  font-size: 14px;
+}
+.yh-login input[type="text"],
+.yh-login input[type="password"] {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--yh-line);
+  border-radius: 0;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  font: 15px var(--yh-sans);
+  color: var(--yh-ink);
+  background: #fff;
+  text-align: left;
+}
+.yh-login input:focus {
+  outline: none;
+  border-color: var(--yh-navy);
+  box-shadow: 0 0 0 3px rgba(10, 37, 71, .15);
+}
+.yh-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--yh-ink);
+  margin: 4px 0 14px;
+  cursor: pointer;
+  user-select: none;
+}
+.yh-remember input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--yh-navy);
+}
+.yh-login .btn-login {
+  width: 100%;
+  background: var(--yh-navy);
+  color: #fff;
+  border: 0;
+  font: 700 15px var(--yh-sans);
+  line-height: 42px;
+  cursor: pointer;
+  border-radius: 0;
+}
+.yh-login .btn-login:hover { background: var(--yh-navy-deep); }
+.yh-login .login-hint {
+  color: var(--yh-muted);
+  font-size: 12px;
+  margin-top: 14px;
+  text-align: left;
+}
+.yh-login .login-hint a { color: var(--yh-navy); text-decoration: none; }
+.yh-login .login-hint a:hover { text-decoration: underline; }
+.yh-login .login-err { color: #b91c1c; font-size: 13px; margin-top: 8px; }
+
+@media (max-width: 860px) {
+  body:not(.in-app) { height: auto; overflow: auto; }
+  #login-view.yh { height: auto; min-height: 100vh; }
+  .yh-split { grid-template-columns: 1fr; height: auto; }
+  .yh-hero { height: 180px; }
+  .yh-pane-story { padding: 24px 20px; }
+  .yh-pane-login { padding: 28px 20px 40px; }
+}

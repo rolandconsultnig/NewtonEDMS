@@ -22,6 +22,18 @@ class UserOut(BaseModel):
     role: str
     is_active: bool
     created_at: datetime | None
+    totp_enabled: bool = False
+    theme: str | None = "light"
+    collective_id: int | None = None
+    locale: str | None = "en"
+    density: str | None = "standard"
+    quota_bytes: int | None = 0
+    last_login_at: datetime | None = None
+    avatar: str | None = None
+
+
+class SessionOut(BaseModel):
+    user: UserOut | None = None
 
 
 class UserCreate(BaseModel):
@@ -59,6 +71,12 @@ class FolderOut(BaseModel):
     is_public: bool
     created_by: int
     created_at: datetime | None
+    kind: str | None = "folder"
+    color: str | None = None
+    quota_bytes: int | None = 0
+    alias_of_id: int | None = None
+    deleted_at: datetime | None = None
+    collective_id: int | None = None
 
 
 class FolderCreate(BaseModel):
@@ -84,6 +102,38 @@ class DocumentOut(BaseModel):
     created_by: int
     created_at: datetime | None
     updated_at: datetime | None
+    content_hash: str | None = None
+    correspondent_id: int | None = None
+    concerning_id: int | None = None
+    due_date: datetime | None = None
+    item_date: datetime | None = None
+    source: str | None = "upload"
+    language: str | None = None
+    notes: str | None = None
+    processing_status: str | None = "pending"
+    direction: str | None = None
+    equipment: str | None = None
+    custom_id: str | None = None
+    duplicate_of: int | None = None
+    deleted_at: datetime | None = None
+    locked_by: int | None = None
+    immutable: bool = False
+    indexable: str | None = "indexable"
+    rating: int | None = 0
+    color: str | None = None
+    page_count: int | None = 0
+    alias_of_id: int | None = None
+    file_password: bool = False
+    confirmed: bool = False
+    organization_id: int | None = None
+    equipment_id: int | None = None
+    source_id: int | None = None
+    signed: bool = False
+    legal_hold: bool = False
+    case_id: int | None = None
+    thumbnail_path: str | None = None
+    pdf_file_path: str | None = None
+    collective_id: int | None = None
 
 
 class VersionOut(BaseModel):
@@ -110,6 +160,7 @@ class PermissionOut(BaseModel):
     can_write: bool
     can_delete: bool
     can_manage: bool
+    bits: int | None = 0
 
 
 class AuditOut(BaseModel):
@@ -155,14 +206,25 @@ class ImportFolderOut(BaseModel):
     created_by: int
     created_at: datetime | None
     last_scan: datetime | None
+    protocol: str | None = "local"
+    host: str | None = None
+    port: int | None = None
+    username: str | None = None
+    remote_path: str | None = None
 
 
 class ImportFolderCreate(BaseModel):
     name: str
-    local_path: str
+    local_path: str = ""
     target_folder_id: int
     recursive: bool = True
     delete_after_import: bool = False
+    protocol: str = "local"
+    host: str | None = None
+    port: int | None = None
+    username: str | None = None
+    password: str | None = None
+    remote_path: str | None = None
 
 
 class EmailImportRequest(BaseModel):
@@ -188,6 +250,7 @@ class CommentOut(BaseModel):
     x: int | None
     y: int | None
     created_at: datetime | None
+    author_name: str | None = None
 
 
 class CommentCreate(BaseModel):
@@ -209,6 +272,9 @@ class ShareLinkOut(BaseModel):
     download_count: int
     created_at: datetime | None
     url: str | None
+    name: str | None = None
+    password_protected: bool = False
+    kind: str = "download"
 
 
 class RetentionPolicyOut(BaseModel):
@@ -256,6 +322,7 @@ class WorkflowTemplateOut(BaseModel):
     name: str
     description: str | None
     steps: list | None
+    graph: dict | None = None
     created_by: int
     created_at: datetime | None
 
@@ -274,6 +341,7 @@ class WorkflowInstanceOut(BaseModel):
     document_id: int
     status: str
     current_step: int
+    current_node: str | None = None
     created_by: int
     created_at: datetime | None
     completed_at: datetime | None
@@ -296,6 +364,7 @@ class TaskOut(BaseModel):
     document_id: int | None
     status: str
     comment: str | None
+    node_id: str | None = None
     due_at: datetime | None
     completed_at: datetime | None
     created_at: datetime | None
@@ -338,3 +407,297 @@ class FacetsOut(BaseModel):
     by_mime: dict
     by_tag: dict
     by_extension: dict
+    by_correspondent: dict = Field(default_factory=dict)
+    by_source: dict = Field(default_factory=dict)
+    overdue: int = 0
+
+
+class CollectiveOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    description: str | None
+    created_at: datetime | None
+    language: str | None = "eng"
+    invite_code: str | None = None
+
+
+class ContactOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    email: str | None
+    organization: str | None
+    kind: str
+    notes: str | None
+    created_by: int
+    created_at: datetime | None
+    concerning_only: bool = False
+    websites: list | None = None
+    emails: list | None = None
+    organization_id: int | None = None
+
+
+class ContactCreate(BaseModel):
+    name: str
+    email: str | None = ""
+    organization: str | None = ""
+    kind: str = "both"
+    notes: str | None = ""
+    concerning_only: bool = False
+    websites: list | None = None
+    emails: list | None = None
+    organization_id: int | None = None
+
+
+class TagOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    category: str | None
+
+
+class TagCreate(BaseModel):
+    name: str
+    category: str | None = ""
+
+
+class CustomFieldOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    label: str | None
+    ftype: str
+    required: bool
+    created_by: int
+    created_at: datetime | None
+
+
+class CustomFieldCreate(BaseModel):
+    name: str
+    label: str | None = ""
+    ftype: str = "text"
+    required: bool = False
+
+
+class CustomFieldValueIn(BaseModel):
+    field_id: int
+    value: str
+
+
+class AttachmentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    document_id: int
+    name: str
+    size: int
+    mime: str | None
+    role: str
+
+
+class JobOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    kind: str
+    document_id: int | None
+    status: str
+    priority: int
+    progress: float | None
+    message: str | None
+    created_at: datetime | None
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
+class BookmarkOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    query: str
+    user_id: int
+    created_at: datetime | None
+    kind: str | None = "query"
+    resource_id: int | None = None
+
+
+class BookmarkCreate(BaseModel):
+    name: str
+    query: str = ""
+    kind: str = "query"
+    resource_id: int | None = None
+
+
+class DashboardOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    layout: list | None
+    is_default: bool
+    user_id: int
+    created_at: datetime | None
+
+
+class DashboardCreate(BaseModel):
+    name: str
+    layout: list | None = None
+    is_default: bool = False
+
+
+class AnonymousUploadOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    token: str
+    name: str
+    folder_id: int
+    tags: str
+    correspondent_id: int | None
+    enabled: bool
+    max_files: int
+    upload_count: int
+    created_by: int
+    created_at: datetime | None
+    expires_at: datetime | None
+    url: str | None = None
+    skip_duplicates: bool = False
+    priority: int = 0
+    language: str | None = None
+
+
+class AnonymousUploadCreate(BaseModel):
+    name: str
+    folder_id: int
+    tags: str = ""
+    correspondent_id: int | None = None
+    max_files: int = 50
+    expires_days: int | None = 30
+    skip_duplicates: bool = False
+    priority: int = 0
+    language: str | None = None
+
+
+class MailSettingsOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    kind: str
+    name: str
+    host: str
+    port: int
+    username: str | None
+    use_ssl: bool
+    mailbox: str | None
+    created_at: datetime | None
+
+
+class MailSettingsCreate(BaseModel):
+    kind: Literal["smtp", "imap"]
+    name: str
+    host: str
+    port: int = 587
+    username: str | None = ""
+    password: str | None = ""
+    use_ssl: bool = True
+    mailbox: str = "INBOX"
+
+
+class SendMailRequest(BaseModel):
+    document_ids: list[int]
+    to: str
+    cc: str | None = None
+    subject: str
+    body: str = ""
+    settings_id: int | None = None
+    attach_pdf: bool = False
+    template_id: int | None = None
+
+
+class NotificationRuleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    name: str
+    query: str
+    channel: str
+    interval_hours: int
+    last_run: datetime | None
+    enabled: bool
+    created_at: datetime | None
+
+
+class NotificationRuleCreate(BaseModel):
+    name: str
+    query: str
+    channel: str = "inapp"
+    interval_hours: int = 24
+
+
+class AddonOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    event: str
+    webhook_url: str | None = ""
+    enabled: bool
+    created_by: int
+    created_at: datetime | None
+    trigger: str | None = "on_process"
+    sandbox: str | None = "subprocess"
+
+
+class AddonCreate(BaseModel):
+    name: str
+    event: str = "on_process"
+    webhook_url: str = ""
+
+
+class BulkEditRequest(BaseModel):
+    ids: list[int]
+    tags: str | None = None
+    folder_id: int | None = None
+    status: str | None = None
+    correspondent_id: int | None = None
+    concerning_id: int | None = None
+    due_date: datetime | None = None
+    notes: str | None = None
+
+
+class MergeRequest(BaseModel):
+    ids: list[int]
+    title: str | None = None
+    folder_id: int | None = None
+    attachment_ids: list[int] | None = None
+
+
+class QueryParseOut(BaseModel):
+    filters: dict
+    fulltext: str
+    raw: str
+
+
+class SuggestOut(BaseModel):
+    tags: list[str]
+    contacts: list[ContactOut]
+    dates: list[str]
+    language: str | None = None
+
+
+class TotpSetupOut(BaseModel):
+    secret: str
+    otpauth_url: str
+    enabled: bool
+
+
+class ThemeUpdate(BaseModel):
+    theme: Literal["light", "dark"]

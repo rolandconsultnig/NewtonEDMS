@@ -129,7 +129,7 @@ def test_delete_document_purges_versions_and_comments(client, admin_token, root_
     finally:
         db.close()
 
-    assert client.delete(f"/api/documents/{doc_id}", headers=headers).status_code == 200
+    assert client.delete(f"/api/documents/{doc_id}?permanent=true", headers=headers).status_code == 200
 
     db = _db()
     try:

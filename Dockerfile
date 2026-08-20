@@ -1,4 +1,4 @@
-# NewEDMS production image.
+# NewtonEDMS production image.
 #
 # SQLite + local storage means this is a single-node deployment: keep workers=1
 # and mount a volume at /data (database + uploaded files). For multi-worker or
@@ -11,14 +11,16 @@ ENV PYTHONUNBUFFERED=1 \
     EDMS_STORAGE_DIR=/data/storage \
     EDMS_DATABASE_URL=sqlite:////data/edms.db
 
-WORKDIR /srv/newedms
+WORKDIR /srv/newtonedms
 
 # Install pinned runtime dependencies first for better layer caching.
 COPY requirements.txt requirements.lock ./
 RUN pip install --no-cache-dir -r requirements.lock
 
-# Application code (frontend/tailwind.css is committed, so no node build here).
+# Application code (frontend/tailwind.css + vendored fonts are committed, so no
+# node build is needed here).
 COPY app ./app
+COPY frontend ./frontend
 COPY alembic ./alembic
 COPY alembic.ini main.py ./
 

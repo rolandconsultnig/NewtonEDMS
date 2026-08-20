@@ -1,10 +1,11 @@
 {
-  "name": "newedms",
-  "version": "0.1.0",
+  "name": "newtonedms",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "build:css": "tailwindcss -i ./frontend/src/input.css -o ./frontend/tailwind.css --minify",
-    "watch:css": "tailwindcss -i ./frontend/src/input.css -o ./frontend/tailwind.css --watch"
+    "watch:css": "tailwindcss -i ./frontend/src/input.css -o ./frontend/tailwind.css --watch",
+    "copy:fonts": "node -e \"const fs=require('fs');const p=require('path');const src=p.join('node_modules','@fortawesome','fontawesome-free','webfonts');const dest=p.join('frontend','webfonts');fs.mkdirSync(dest,{recursive:true});for (const f of fs.readdirSync(src)) if (f.endsWith('.woff2')) fs.copyFileSync(p.join(src,f), p.join(dest,f));\""
   },
   "devDependencies": {
     "@fortawesome/fontawesome-free": "^7.3.1",

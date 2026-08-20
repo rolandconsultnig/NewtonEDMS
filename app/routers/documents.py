@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from sqlalchemy import String, cast, or_
 from sqlalchemy.orm import Session
 
@@ -15,24 +16,42 @@ from app import database
 from app.audit import audit
 from app.database import get_db, now
 from app.indexing import index_document, remove_document, search_documents
+from app.joex import schedule_document
 from app.models import (
     CalendarEvent,
     Comment,
+    CustomFieldValue,
     Document,
+    DocumentAttachment,
     DocumentVersion,
     Folder,
     MetadataTemplate,
+    ProcessingJob,
     ShareLink,
     Task,
     User,
     WorkflowInstance,
 )
 from app.permissions import has_permission, readable_document_ids, readable_folder_ids
+from app.querylang import apply_filters, parse_query
 from app.schemas import DocumentOut, VersionOut
 from app.security import get_current_user
 from app.storage import doc_storage_dir, safe_filename, save_upload, validate_upload_filename
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
+
+
+def _parse_dt(value: str):
+    if not value:
+        return None
+    from datetime import datetime
+
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    raise HTTPException(status_code=400, detail=f"Invalid date: {value}")
 
 
 @router.get("", response_model=list[DocumentOut])
@@ -46,21 +65,27 @@ def list_documents(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    q = db.query(Document)
+    q = db.query(Document).filter(Document.deleted_at.is_(None))
     if folder_id is not None:
         q = q.filter(Document.folder_id == folder_id)
     if search:
-        like = f"%{search}%"
-        full_text_ids = search_documents(search, limit=1000)
-        text_conditions = [
-            (Document.name.ilike(like))
-            | (Document.title.ilike(like))
-            | (Document.tags.ilike(like))
-            | (cast(Document.metadata_json, String).ilike(like))
-        ]
-        if full_text_ids:
-            text_conditions.append(Document.id.in_(full_text_ids))
-        q = q.filter(or_(*text_conditions))
+        parsed = parse_query(search)
+        q = apply_filters(q, parsed, db)
+        text = parsed.fulltext or (search if ":" not in search else "")
+        if text:
+            like = f"%{text}%"
+            full_text_ids = search_documents(text, limit=1000)
+            text_conditions = [
+                (Document.name.ilike(like))
+                | (Document.title.ilike(like))
+                | (Document.tags.ilike(like))
+                | (cast(Document.metadata_json, String).ilike(like))
+                | (Document.notes.ilike(like))
+                | (Document.extracted_text.ilike(like))
+            ]
+            if full_text_ids:
+                text_conditions.append(Document.id.in_(full_text_ids))
+            q = q.filter(or_(*text_conditions))
     if tags:
         for tag in tags.split(","):
             q = q.filter(Document.tags.ilike(f"%{tag.strip()}%"))
@@ -76,6 +101,9 @@ def list_documents(
         if docs:
             conditions.append(Document.id.in_(docs))
         q = q.filter(or_(*conditions))
+    from app.tenancy import filter_documents
+
+    q = filter_documents(q, user)
     q = q.order_by(Document.updated_at.desc()).offset(skip).limit(limit)
     return q.all()
 
@@ -87,7 +115,7 @@ def get_document(
     user: User = Depends(get_current_user),
 ):
     d = db.get(Document, doc_id)
-    if not d:
+    if not d or d.deleted_at:
         raise HTTPException(status_code=404, detail="Document not found")
     f = db.get(Folder, d.folder_id)
     if not has_permission(db, user, "read", f, d):
@@ -104,6 +132,8 @@ def _upload_one(
     tags: str = "",
     metadata: dict | None = None,
     template_id: int | None = None,
+    skip_duplicates: bool = False,
+    source_id: int | None = None,
 ) -> Document:
     meta = metadata or {}
     if template_id is not None:
@@ -115,8 +145,29 @@ def _upload_one(
     name = safe_filename(file.filename)
     validate_upload_filename(name)
     tmp_path = database.STORAGE_DIR / f".upload_{uuid.uuid4().hex}"
+    used = 0
+    if user.quota_bytes:
+        from sqlalchemy import func as sqlfunc
+
+        used = (
+            db.query(sqlfunc.coalesce(sqlfunc.sum(Document.size), 0))
+            .filter(Document.created_by == user.id, Document.deleted_at.is_(None))
+            .scalar()
+            or 0
+        )
     try:
         size = save_upload(file.file, tmp_path)
+        if user.quota_bytes and used + size > user.quota_bytes:
+            tmp_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=413, detail="Storage quota exceeded")
+        from app.hashing import file_sha256
+
+        digest = file_sha256(tmp_path)
+        if skip_duplicates:
+            twin = db.query(Document).filter(Document.content_hash == digest, Document.deleted_at.is_(None)).first()
+            if twin:
+                tmp_path.unlink(missing_ok=True)
+                raise HTTPException(status_code=409, detail=f"Duplicate of document {twin.id}")
         d = Document(
             name=name,
             title=title or name,
@@ -127,6 +178,10 @@ def _upload_one(
             size=size,
             mime=file.content_type or mimetypes.guess_type(name)[0] or "application/octet-stream",
             file_path=str(tmp_path),
+            content_hash=digest,
+            source_id=source_id,
+            confirmed=False,
+            collective_id=getattr(folder, "collective_id", None) or user.collective_id,
         )
         db.add(d)
         db.flush()
@@ -136,6 +191,14 @@ def _upload_one(
         shutil.move(str(tmp_path), str(dest))
         d.file_path = str(dest)
         d.size = dest.stat().st_size
+        try:
+            from app.backends import persist
+
+            loc = persist(db, f"doc_{d.id}", dest, d.mime)
+            if loc and loc != str(dest):
+                d.file_path = loc
+        except Exception:
+            pass
         v = DocumentVersion(
             document_id=d.id,
             version_number=1,
@@ -151,6 +214,13 @@ def _upload_one(
         tmp_path.unlink(missing_ok=True)
         raise
     index_document(d.id, d.title, d.tags, d.file_path, d.size)
+    schedule_document(db, d.id, created_by=user.id)
+    try:
+        from app.hooks import after_document_create
+
+        after_document_create(db, d)
+    except Exception:
+        pass
     audit(db, user, "DOCUMENT_CREATE", "document", d.id, f"Uploaded {name} to folder {folder.id}")
     return d
 
@@ -162,6 +232,8 @@ def upload_document(
     tags: str | None = Form(""),
     metadata: str | None = Form("{}"),
     template_id: int | None = Form(None),
+    skip_duplicates: bool = Form(False),
+    source_id: int | None = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -175,7 +247,10 @@ def upload_document(
         meta = json.loads(metadata or "{}")
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid metadata JSON") from None
-    return _upload_one(db, user, f, file, title=title, tags=tags, metadata=meta, template_id=template_id)
+    return _upload_one(
+        db, user, f, file, title=title, tags=tags, metadata=meta, template_id=template_id,
+        skip_duplicates=skip_duplicates, source_id=source_id,
+    )
 
 
 @router.post("/bulk", response_model=list[DocumentOut])
@@ -200,7 +275,7 @@ def bulk_upload(
     results = []
     for file in files:
         try:
-            d = _upload_one(db, user, f, file, tags=tags, metadata=meta, template_id=template_id)
+            d = _upload_one(db, user, f, file, tags=tags, metadata=meta, template_id=template_id, skip_duplicates=False)
             results.append(d)
         except HTTPException:
             raise
@@ -400,6 +475,40 @@ def checkin_document(
     return {"ok": True}
 
 
+class OwnerIn(BaseModel):
+    user_id: int
+
+
+@router.post("/{doc_id}/owner", response_model=DocumentOut)
+def transfer_ownership(
+    doc_id: int,
+    payload: OwnerIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    d = db.get(Document, doc_id)
+    if not d:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if d.deleted_at:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if d.created_by != user.id and user.role not in ("superadmin", "admin"):
+        raise HTTPException(status_code=403, detail="Only the owner or an admin can transfer ownership")
+    target = db.get(User, payload.user_id)
+    if not target or not target.is_active:
+        raise HTTPException(status_code=404, detail="Target user not found or inactive")
+    if target.id == d.created_by:
+        raise HTTPException(status_code=400, detail="User already owns this document")
+    old_owner = d.created_by
+    d.created_by = target.id
+    # The new owner takes over an open checkout so it cannot orphan the lock.
+    if d.checked_out_by == old_owner:
+        d.checked_out_by = target.id
+    db.commit()
+    db.refresh(d)
+    audit(db, user, "DOCUMENT_TRANSFER_OWNER", "document", d.id, f"Ownership {old_owner} -> {target.id}")
+    return d
+
+
 @router.put("/{doc_id}", response_model=DocumentOut)
 def update_document(
     doc_id: int,
@@ -407,6 +516,15 @@ def update_document(
     tags: str | None = Form(None),
     metadata: str | None = Form(None),
     status: str | None = Form(None),
+    notes: str | None = Form(None),
+    correspondent_id: int | None = Form(None),
+    concerning_id: int | None = Form(None),
+    due_date: str | None = Form(None),
+    item_date: str | None = Form(None),
+    direction: str | None = Form(None),
+    equipment: str | None = Form(None),
+    custom_id: str | None = Form(None),
+    language: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -416,6 +534,10 @@ def update_document(
     f = db.get(Folder, d.folder_id)
     if not has_permission(db, user, "write", f, d):
         raise HTTPException(status_code=403, detail="No permission")
+    if getattr(d, "immutable", False):
+        raise HTTPException(status_code=400, detail="Document is immutable")
+    if getattr(d, "locked_by", None) and d.locked_by != user.id and user.role not in ("admin", "superadmin"):
+        raise HTTPException(status_code=403, detail="Document is locked")
     if title is not None:
         d.title = title
     if tags is not None:
@@ -436,6 +558,24 @@ def update_document(
         if status not in allowed.get(d.status, []) and user.role not in ("superadmin", "admin"):
             raise HTTPException(status_code=400, detail="Invalid workflow transition")
         d.status = status
+    if notes is not None:
+        d.notes = notes
+    if correspondent_id is not None:
+        d.correspondent_id = correspondent_id or None
+    if concerning_id is not None:
+        d.concerning_id = concerning_id or None
+    if due_date is not None:
+        d.due_date = _parse_dt(due_date)
+    if item_date is not None:
+        d.item_date = _parse_dt(item_date)
+    if direction is not None:
+        d.direction = direction
+    if equipment is not None:
+        d.equipment = equipment
+    if custom_id is not None:
+        d.custom_id = custom_id
+    if language is not None:
+        d.language = language
     d.updated_at = now()
     db.commit()
     db.refresh(d)
@@ -447,6 +587,7 @@ def update_document(
 @router.delete("/{doc_id}")
 def delete_document(
     doc_id: int,
+    permanent: bool = Query(False),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -456,32 +597,25 @@ def delete_document(
     f = db.get(Folder, d.folder_id)
     if not has_permission(db, user, "delete", f, d):
         raise HTTPException(status_code=403, detail="No permission")
+    from app.compliance import is_held
+
+    if is_held(db, d):
+        raise HTTPException(status_code=423, detail="Document is on legal hold")
+    if d.immutable and not permanent:
+        raise HTTPException(status_code=400, detail="Document is immutable")
+    if not permanent:
+        d.deleted_at = now()
+        d.deleted_by = user.id
+        db.commit()
+        audit(db, user, "DOCUMENT_TRASH", "document", doc_id, f"Trashed {d.name}")
+        return {"ok": True, "trashed": True}
     ddir = doc_storage_dir(d.id)
     if ddir.exists():
         shutil.rmtree(ddir)
     remove_document(doc_id)
-    # Purge rows that reference this document (FK enforcement is on, and
-    # orphaned versions/comments/shares should not outlive the document).
-    instance_ids = [
-        row[0]
-        for row in db.query(WorkflowInstance.id)
-        .filter(WorkflowInstance.document_id == doc_id)
-        .all()
-    ]
-    if instance_ids:
-        db.query(Task).filter(Task.instance_id.in_(instance_ids)).delete(synchronize_session=False)
-        db.query(WorkflowInstance).filter(WorkflowInstance.id.in_(instance_ids)).delete(
-            synchronize_session=False
-        )
-    db.query(Comment).filter(Comment.document_id == doc_id).delete(synchronize_session=False)
-    db.query(ShareLink).filter(ShareLink.document_id == doc_id).delete(synchronize_session=False)
-    db.query(DocumentVersion).filter(DocumentVersion.document_id == doc_id).delete(
-        synchronize_session=False
-    )
-    # Calendar events may outlive the document; just detach the reference.
-    db.query(CalendarEvent).filter(CalendarEvent.document_id == doc_id).update(
-        {"document_id": None}
-    )
+    from app.purge import purge_document_children
+
+    purge_document_children(db, doc_id)
     db.delete(d)
     db.commit()
     audit(db, user, "DOCUMENT_DELETE", "document", doc_id, f"Deleted document {d.name}")

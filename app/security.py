@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db, now
-from app.models import RevokedToken, User
+from app.models import ApiKey, RevokedToken, User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # auto_error=False so we can fall back to the auth cookie before raising.
@@ -69,27 +69,85 @@ def get_token(
     )
 
 
-def get_current_user(token: str = Depends(get_token), db: Session = Depends(get_db)) -> User:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+def _user_from_jwt(token: str, db: Session) -> User | None:
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         username = payload.get("sub")
         jti = payload.get("jti")
         if username is None or jti is None:
-            raise credentials_exception
+            return None
     except JWTError:
-        raise credentials_exception from None
-    # Reject tokens that have been revoked (e.g. via /api/auth/logout).
+        return None
     if db.query(RevokedToken).filter(RevokedToken.jti == jti).first():
-        raise credentials_exception
+        return None
     user = db.query(User).filter(User.username == username).first()
     if user is None or not user.is_active:
-        raise credentials_exception
+        return None
     return user
+
+
+def _user_from_api_key(raw: str, db: Session) -> User | None:
+    if not raw or len(raw) < 8:
+        return None
+    prefix = raw[:8]
+    for key in db.query(ApiKey).filter(ApiKey.prefix == prefix).all():
+        if verify_password(raw, key.key_hash):
+            key.last_used_at = now()
+            db.commit()
+            user = db.get(User, key.user_id)
+            if user and user.is_active:
+                return user
+    return None
+
+
+def _raw_api_key(request: Request) -> str | None:
+    header = request.headers.get("X-API-Key")
+    if header:
+        return header.strip()
+    auth = request.headers.get("Authorization") or ""
+    if auth.lower().startswith("apikey "):
+        return auth.split(" ", 1)[1].strip()
+    return None
+
+
+def get_current_user(
+    request: Request,
+    token: str | None = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> User:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    raw = token or request.cookies.get(settings.cookie_name)
+    if raw:
+        user = _user_from_jwt(raw, db)
+        if user:
+            return user
+    api_key = _raw_api_key(request)
+    if api_key:
+        user = _user_from_api_key(api_key, db)
+        if user:
+            return user
+    raise credentials_exception
+
+
+def get_optional_user(
+    request: Request,
+    token: str | None = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """Like ``get_current_user`` but returns ``None`` instead of 401."""
+    raw = token or request.cookies.get(settings.cookie_name)
+    if raw:
+        user = _user_from_jwt(raw, db)
+        if user:
+            return user
+    api_key = _raw_api_key(request)
+    if api_key:
+        return _user_from_api_key(api_key, db)
+    return None
 
 
 def require_role(*roles: str):

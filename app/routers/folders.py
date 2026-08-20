@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.audit import audit
-from app.database import get_db
+from app.database import get_db, now
 from app.models import Document, Folder, Permission, RetentionPolicy, User
 from app.permissions import has_permission, readable_folder_ids
 from app.schemas import FolderCreate, FolderOut, PermissionOut
@@ -23,7 +23,10 @@ def list_folders(
     root = db.query(Folder).filter(Folder.parent_id.is_(None)).first()
     if parent_id is None:
         parent_id = root.id if root else None
-    folders = db.query(Folder).filter(Folder.parent_id == parent_id).all()
+    folders = db.query(Folder).filter(Folder.parent_id == parent_id, Folder.deleted_at.is_(None)).all()
+    from app.tenancy import filter_folders, same_collective
+
+    folders = [f for f in folders if same_collective(user, f)]
     return [f for f in folders if has_permission(db, user, "read", f)]
 
 
@@ -33,7 +36,10 @@ def list_all_folders(
     user: User = Depends(get_current_user),
 ):
     """Every folder the user can read (flat list) — the UI builds the tree client-side."""
-    q = db.query(Folder)
+    q = db.query(Folder).filter(Folder.deleted_at.is_(None))
+    from app.tenancy import filter_folders
+
+    q = filter_folders(q, user)
     if user.role not in ("superadmin", "admin"):
         ids = readable_folder_ids(db, user)
         if not ids:
@@ -58,6 +64,7 @@ def create_folder(
         parent_id=payload.parent_id,
         is_public=payload.is_public,
         created_by=user.id,
+        collective_id=getattr(parent, "collective_id", None) or user.collective_id,
     )
     db.add(f)
     db.commit()
@@ -73,6 +80,9 @@ def create_folder(
         can_delete=True,
         can_manage=True,
     )
+    from app.acl import ACL_BITS, apply_flags
+
+    apply_flags(p, {k: True for k in ACL_BITS})
     db.add(p)
     db.commit()
     audit(db, user, "FOLDER_CREATE", "folder", f.id, f"Created folder {f.name}")
@@ -116,6 +126,7 @@ def update_folder(
 @router.delete("/{folder_id}")
 def delete_folder(
     folder_id: int,
+    permanent: bool = Query(False),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -126,9 +137,23 @@ def delete_folder(
         raise HTTPException(status_code=400, detail="Cannot delete root folder")
     if not has_permission(db, user, "delete", f):
         raise HTTPException(status_code=403, detail="No permission to delete folder")
+
+    def _trash(folder: Folder):
+        folder.deleted_at = now()
+        folder.deleted_by = user.id
+        db.query(Document).filter(Document.folder_id == folder.id, Document.deleted_at.is_(None)).update(
+            {"deleted_at": now(), "deleted_by": user.id}
+        )
+        for child in db.query(Folder).filter(Folder.parent_id == folder.id, Folder.deleted_at.is_(None)).all():
+            _trash(child)
+
+    if not permanent:
+        _trash(f)
+        db.commit()
+        audit(db, user, "FOLDER_TRASH", "folder", folder_id, f"Trashed folder {f.name}")
+        return {"ok": True, "trashed": True}
     if db.query(Document).filter(Document.folder_id == folder_id).first() or f.children:
         raise HTTPException(status_code=400, detail="Folder is not empty")
-    # Retention policies may outlive their folder; detach the reference.
     db.query(RetentionPolicy).filter(RetentionPolicy.folder_id == folder_id).update(
         {"folder_id": None}
     )
@@ -191,10 +216,32 @@ def set_folder_permission(
             resource_id=folder_id,
         )
         db.add(p)
-    p.can_read = can_read
-    p.can_write = can_write
-    p.can_delete = can_delete
-    p.can_manage = can_manage
+    from app.acl import apply_flags
+
+    flags = {
+        "read": can_read,
+        "preview": can_read,
+        "download": can_read,
+        "print": can_read,
+        "write": can_write,
+        "add": can_write,
+        "rename": can_write,
+        "move": can_write,
+        "email": can_write,
+        "delete": can_delete,
+        "security": can_manage,
+        "immutable": can_manage,
+        "password": can_manage,
+        "subscription": can_manage,
+        "workflow": can_manage,
+        "calendar": can_manage,
+        "archive": can_manage,
+        "import": can_manage,
+        "export": can_manage,
+        "customid": can_manage,
+        "revision": can_manage,
+    }
+    apply_flags(p, flags)
     db.commit()
     db.refresh(p)
     audit(

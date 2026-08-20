@@ -14,7 +14,7 @@ anyio==4.14.2
     # via
     #   starlette
     #   watchfiles
-bcrypt==5.0.0
+bcrypt==4.0.1
     # via passlib
 cffi==2.1.1
     # via cryptography

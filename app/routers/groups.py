@@ -71,6 +71,18 @@ def delete_group(
     return {"ok": True}
 
 
+@router.get("/{group_id}/users")
+def list_group_users(
+    group_id: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    g = db.get(Group, group_id)
+    if not g:
+        raise HTTPException(status_code=404, detail="Group not found")
+    return [{"id": u.id, "username": u.username, "role": u.role} for u in g.users]
+
+
 @router.post("/{group_id}/users/{user_id}")
 def add_user_to_group(
     group_id: int,

@@ -22,7 +22,16 @@ Dockerfile
 docker-compose.yml
 README.md
 LogicalDoc_Features.md
+NewtonEDMS_Features.md
 test_api.py
 package.json
 package-lock.json
 tailwind.config.js
+.vscode
+deploy
+cookies.txt
+community-master
+docspell-master
+community-master.zip
+docspell-master.zip
+abstract-background-with-lines-and-colors-vector.jpg

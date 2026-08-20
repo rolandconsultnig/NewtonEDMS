@@ -4,6 +4,7 @@
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.acl import has_bit
 from app.models import Document, Folder, Permission, User
 
 
@@ -34,7 +35,13 @@ def has_permission(
     folder: Folder,
     doc: Document | None = None,
 ) -> bool:
-    if user.role in ("superadmin", "admin"):
+    if user.role == "superadmin":
+        return True
+    from app.tenancy import same_collective
+
+    if not same_collective(user, folder, doc):
+        return False
+    if user.role == "admin":
         return True
     if doc and doc.created_by == user.id:
         return True
@@ -60,7 +67,7 @@ def has_permission(
     ).filter(or_(*_principal_filters(user)))
     col = _perm_column(action)
     for p in q.all():
-        if getattr(p, col):
+        if has_bit(p, action) or (col and getattr(p, col, False)):
             return True
     return False
 
@@ -95,7 +102,7 @@ def readable_folder_ids(db: Session, user: User) -> set:
         row[0]
         for row in db.query(Permission.resource_id).filter(
             Permission.resource_type == "folder",
-            Permission.can_read.is_(True),
+            or_(Permission.can_read.is_(True), Permission.bits.op("&")(1) != 0),
             or_(*_principal_filters(user)),
         ).all()
     ]

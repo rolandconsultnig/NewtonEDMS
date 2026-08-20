@@ -33,7 +33,7 @@ def facets(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    q = db.query(Document)
+    q = db.query(Document).filter(Document.deleted_at.is_(None))
     if folder_id is not None:
         q = q.filter(Document.folder_id == folder_id)
     if user.role not in ("superadmin", "admin"):
@@ -48,12 +48,21 @@ def facets(
     by_mime: dict[str, int] = {}
     by_tag: dict[str, int] = {}
     by_extension: dict[str, int] = {}
+    by_source: dict[str, int] = {}
+    overdue = 0
+    from app.database import now as utcnow
+
+    stamp = utcnow()
     for d in docs:
         by_status[d.status] = by_status.get(d.status, 0) + 1
         mime = (d.mime or "unknown").split(";")[0]
         by_mime[mime] = by_mime.get(mime, 0) + 1
         ext = Path(d.name).suffix.lower() or "none"
         by_extension[ext] = by_extension.get(ext, 0) + 1
+        src = d.source or "upload"
+        by_source[src] = by_source.get(src, 0) + 1
+        if d.due_date and d.due_date < stamp:
+            overdue += 1
         for tag in (d.tags or "").split(","):
             tag = tag.strip()
             if tag:
@@ -65,6 +74,8 @@ def facets(
         "by_mime": by_mime,
         "by_tag": by_tag,
         "by_extension": by_extension,
+        "by_source": by_source,
+        "overdue": overdue,
     }
 
 
@@ -199,6 +210,38 @@ def list_backups(
         {"file": p.name, "size": p.stat().st_size, "created": p.stat().st_mtime}
         for p in sorted(backup_dir.glob("backup_*.zip"), reverse=True)
     ]
+
+
+@router.post("/backup/restore")
+def restore_backup(
+    file: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("superadmin", "admin")),
+):
+    backup_dir = database.STORAGE_DIR / "backups"
+    zip_path = backup_dir / Path(file).name
+    if not zip_path.exists() or zip_path.suffix.lower() != ".zip":
+        raise HTTPException(404, "Backup not found")
+    dest = database.STORAGE_DIR / "restores" / zip_path.stem
+    dest.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path) as zf:
+        zf.extractall(dest)
+    restored = 0
+    docs_src = dest / "documents"
+    docs_dst = database.STORAGE_DIR / "documents"
+    if docs_src.exists():
+        docs_dst.mkdir(parents=True, exist_ok=True)
+        for p in docs_src.rglob("*"):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(docs_src)
+            target = docs_dst / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if not target.exists():
+                target.write_bytes(p.read_bytes())
+                restored += 1
+    audit(db, user, "BACKUP_RESTORE", None, None, zip_path.name)
+    return {"ok": True, "extracted": str(dest), "files": restored, "db_copy": str(dest / "edms.db")}
 
 
 # ---------------------------------------------------------------------------

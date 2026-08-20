@@ -25,3 +25,16 @@ test_hello.txt
 
 # Frontend build tooling
 node_modules/
+
+# Third-party reference sources (kept locally, too large / not needed in repo)
+community-master/
+docspell-master/
+community-master.zip
+docspell-master.zip
+
+# Local-only artifacts
+.vscode/
+cookies.txt
+.deploy-adminpw
+abstract-background-with-lines-and-colors-vector.jpg
+/test.docx

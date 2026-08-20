@@ -1,4 +1,4 @@
-"""Entry point: run the NewEDMS API with uvicorn.
+"""Entry point: run the NewtonEDMS API with uvicorn.
 
 The application lives in the ``app`` package; this module simply boots it.
 ``app.main:app`` is the ASGI app reference (e.g. for ``uvicorn app.main:app``).

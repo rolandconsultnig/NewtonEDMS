@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NewtonEDMS scanner</title>
+  <link rel="stylesheet" href="/static/skin.css?v=2" />
+</head>
+<body class="work-pad" style="max-width:40rem;margin:2rem auto">
+  <h1>Document scanner</h1>
+  <p>Capture a page with the camera or upload a scan. Files are ingested into the selected folder and OCR-processed.</p>
+  <label>Folder id <input id="folder" type="number" value="1" /></label>
+  <label>Title <input id="title" placeholder="Scan title" /></label>
+  <video id="cam" autoplay playsinline style="width:100%;background:#111;min-height:180px"></video>
+  <canvas id="shot" class="is-hidden"></canvas>
+  <div class="row" style="margin-top:8px">
+    <button onclick="startCam()">Start camera</button>
+    <button class="ok" onclick="capture()">Capture &amp; ingest</button>
+  </div>
+  <p id="msg"></p>
+  <script>
+    let stream;
+    async function startCam() {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      document.getElementById("cam").srcObject = stream;
+    }
+    async function capture() {
+      const video = document.getElementById("cam");
+      const canvas = document.getElementById("shot");
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      canvas.getContext("2d").drawImage(video, 0, 0);
+      const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.92));
+      const fd = new FormData();
+      fd.append("folder_id", document.getElementById("folder").value);
+      fd.append("title", document.getElementById("title").value || "scan");
+      fd.append("file", blob, "scan.jpg");
+      const r = await fetch("/api/scan/ingest", { method: "POST", body: fd, credentials: "same-origin" });
+      const j = await r.json();
+      document.getElementById("msg").textContent = r.ok ? ("Ingested #" + j.id) : (j.detail || "failed");
+    }
+  </script>
+</body>
+</html>

@@ -3,9 +3,14 @@
 Each test gets an isolated FastAPI ``TestClient`` backed by an in-memory SQLite
 database and a temporary storage directory, so the real ``edms.db`` and
 ``storage/`` are never touched.
+
+Set ``EDMS_TEST_DATABASE_URL`` (e.g. a throwaway Postgres database) to run the
+whole suite against an external engine instead — useful to validate a
+PostgreSQL deployment target. The schema is dropped and recreated per test.
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -23,6 +28,8 @@ from app.config import settings  # noqa: E402
 from app.limiter import limiter  # noqa: E402
 from app.main import app  # noqa: E402
 
+EXTERNAL_TEST_DB = os.environ.get("EDMS_TEST_DATABASE_URL", "")
+
 
 def _login(client: TestClient, username: str = "admin", password: str = "admin123") -> str:
     resp = client.post("/api/auth/login", data={"username": username, "password": password})
@@ -32,9 +39,14 @@ def _login(client: TestClient, username: str = "admin", password: str = "admin12
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
-    # Fresh in-memory database shared across one connection. Built via the app's
-    # engine factory so SQLite FK enforcement is active in tests too.
-    engine = db_mod.create_db_engine("sqlite:///:memory:", poolclass=StaticPool)
+    # Fresh database per test, built via the app's engine factory so SQLite FK
+    # enforcement is active. EDMS_TEST_DATABASE_URL switches the whole suite to
+    # an external engine (e.g. Postgres) to validate a deployment target.
+    if EXTERNAL_TEST_DB:
+        engine = db_mod.create_db_engine(EXTERNAL_TEST_DB)
+        db_mod.Base.metadata.drop_all(bind=engine)
+    else:
+        engine = db_mod.create_db_engine("sqlite:///:memory:", poolclass=StaticPool)
     db_mod.engine = engine
     db_mod.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db_mod.Base.metadata.create_all(bind=engine)
@@ -44,6 +56,8 @@ def client(tmp_path, monkeypatch):
     storage.mkdir()
     monkeypatch.setattr(db_mod, "STORAGE_DIR", storage)
     monkeypatch.setattr(settings, "login_rate_limit", "1000/minute")
+    monkeypatch.setattr(settings, "joex_inline", True)
+    monkeypatch.setattr(settings, "joex_enabled", False)
     limiter.reset()
 
     with TestClient(app) as c:

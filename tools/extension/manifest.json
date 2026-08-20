@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "NewtonEDMS",
+  "version": "1.0.0",
+  "description": "Upload the current page or a file into NewtonEDMS",
+  "action": { "default_popup": "popup.html" },
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": ["http://localhost:8000/*", "http://127.0.0.1:8000/*"]
+}

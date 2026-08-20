@@ -55,6 +55,10 @@ def update_user(
     u = db.get(User, user_id)
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
+    # Deactivating yourself would invalidate your own session on the next
+    # request and lock you out (inactive users cannot log back in).
+    if user_id == current.id and payload.is_active is False:
+        raise HTTPException(status_code=403, detail="You cannot deactivate your own account")
     for field in ["email", "role", "is_active"]:
         v = getattr(payload, field)
         if v is not None:
@@ -74,6 +78,8 @@ def delete_user(
     u = db.get(User, user_id)
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
+    if user_id == current.id:
+        raise HTTPException(status_code=403, detail="You cannot delete your own account")
 
     # Users who own content are deactivated, never hard-deleted: their documents,
     # folders and version history must keep a valid provenance chain.
@@ -132,6 +138,30 @@ def delete_user(
     db.query(models.RevokedToken).filter(models.RevokedToken.user_id == user_id).delete(
         synchronize_session=False
     )
+    db.query(models.Document).filter(models.Document.locked_by == user_id).update(
+        {"locked_by": None}
+    )
+    db.query(models.Document).filter(models.Document.deleted_by == user_id).update(
+        {"deleted_by": None}
+    )
+    for cls in (
+        models.AuthSession,
+        models.LoginHistory,
+        models.ApiKey,
+        models.TrustedDevice,
+        models.Bookmark,
+        models.Dashboard,
+        models.Subscription,
+        models.NotificationRule,
+        models.MailSettings,
+    ):
+        db.query(cls).filter(cls.user_id == user_id).delete(synchronize_session=False)
+    db.query(models.FolderTemplate).filter(models.FolderTemplate.created_by == user_id).delete(
+        synchronize_session=False
+    )
+    db.query(models.InternalMessage).filter(
+        (models.InternalMessage.from_id == user_id) | (models.InternalMessage.to_id == user_id)
+    ).delete(synchronize_session=False)
 
     db.delete(u)  # user_groups association rows are removed by SQLAlchemy
     db.commit()

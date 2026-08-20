@@ -1,12 +1,14 @@
-"""SQLAlchemy ORM models."""
+"""SQLAlchemy ORM models — LogicalDoc repository + Docspell intelligence."""
 
 from sqlalchemy import (
     JSON,
     Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Table,
     Text,
@@ -23,6 +25,20 @@ user_groups = Table(
 )
 
 
+class Collective(Base):
+    """Docspell-style multi-account container (one org / household / team)."""
+
+    __tablename__ = "collectives"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True, nullable=False)
+    description = Column(String)
+    created_at = Column(DateTime, default=now)
+    language = Column(String, default="eng")
+    classifier_config = Column(JSON, default=dict)
+    invite_code = Column(String, unique=True, index=True)
+    settings = Column(JSON, default=dict)
+
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
@@ -33,6 +49,22 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=now)
     groups = relationship("Group", secondary=user_groups, back_populates="users")
+    collective_id = Column(Integer, ForeignKey("collectives.id"), nullable=True)
+    totp_secret = Column(String)
+    totp_enabled = Column(Boolean, default=False)
+    theme = Column(String, default="light")  # light | dark
+    avatar = Column(String)
+    locale = Column(String, default="en")
+    density = Column(String, default="standard")  # compact | standard | comfortable
+    quota_bytes = Column(Integer, default=0)  # 0 = unlimited
+    last_login_at = Column(DateTime)
+    working_hours = Column(JSON, default=dict)
+    ldap_dn = Column(String)
+    ui_settings = Column(JSON, default=dict)
+    oidc_sub = Column(String, index=True)
+    password_changed_at = Column(DateTime, default=now)
+    failed_logins = Column(Integer, default=0)
+    locked_until = Column(DateTime)
 
 
 class Group(Base):
@@ -51,7 +83,49 @@ class Folder(Base):
     is_public = Column(Boolean, default=False)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=now)
-    parent = relationship("Folder", remote_side=[id], backref="children")
+    parent = relationship("Folder", remote_side=[id], foreign_keys=[parent_id], backref="children")
+    kind = Column(String, default="folder")  # folder | workspace
+    color = Column(String)
+    quota_bytes = Column(Integer, default=0)
+    max_children = Column(Integer, default=0)
+    deleted_at = Column(DateTime)
+    deleted_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    alias_of_id = Column(Integer, ForeignKey("folders.id"), nullable=True)
+    template_id = Column(Integer, nullable=True)
+    interface_opts = Column(JSON, default=dict)
+    collective_id = Column(Integer, ForeignKey("collectives.id"), nullable=True)
+
+
+class Contact(Base):
+    """Address-book entry used as correspondent / concerning person (Docspell)."""
+
+    __tablename__ = "contacts"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    email = Column(String)
+    organization = Column(String)
+    kind = Column(String, default="both")  # correspondent, concerning, both
+    notes = Column(String)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+    concerning_only = Column(Boolean, default=False)
+    websites = Column(JSON, default=list)
+    emails = Column(JSON, default=list)
+    channels = Column(JSON, default=list)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
+    collective_id = Column(Integer, ForeignKey("collectives.id"), nullable=True)
+
+
+class Tag(Base):
+    """Canonical tag catalog used for auto-tagging from extracted text."""
+
+    __tablename__ = "tags"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True, nullable=False)
+    category = Column(String)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=now)
+    collective_id = Column(Integer, ForeignKey("collectives.id"), nullable=True)
 
 
 class Document(Base):
@@ -71,6 +145,44 @@ class Document(Base):
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
+    # Docspell-inspired item metadata
+    content_hash = Column(String, index=True)
+    correspondent_id = Column(Integer, ForeignKey("contacts.id"), nullable=True)
+    concerning_id = Column(Integer, ForeignKey("contacts.id"), nullable=True)
+    due_date = Column(DateTime)
+    item_date = Column(DateTime)
+    source = Column(String, default="upload")  # upload, email, imap, scan, import, anonymous
+    language = Column(String)
+    notes = Column(Text)
+    original_file_path = Column(String)  # untouched original (non-destructive)
+    pdf_file_path = Column(String)
+    processing_status = Column(String, default="pending")  # pending, processing, done, error
+    direction = Column(String)  # incoming, outgoing
+    equipment = Column(String)
+    custom_id = Column(String, index=True)
+    extracted_text = Column(Text)
+    duplicate_of = Column(Integer, ForeignKey("documents.id"), nullable=True)
+    deleted_at = Column(DateTime)
+    deleted_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    locked_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    immutable = Column(Boolean, default=False)
+    file_password_hash = Column(String)
+    indexable = Column(String, default="indexable")  # indexable | metadata | unindexable
+    rating = Column(Integer, default=0)
+    color = Column(String)
+    page_count = Column(Integer, default=0)
+    alias_of_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
+    signed = Column(Boolean, default=False)
+    confirmed = Column(Boolean, default=False)
+    confirmed_at = Column(DateTime)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
+    equipment_id = Column(Integer, ForeignKey("equipment.id"), nullable=True)
+    source_id = Column(Integer, ForeignKey("anonymous_uploads.id"), nullable=True)
+    thumbnail_path = Column(String)
+    legal_hold = Column(Boolean, default=False)
+    case_id = Column(Integer, nullable=True)
+    collab_rev = Column(Integer, default=0)
+    collective_id = Column(Integer, ForeignKey("collectives.id"), nullable=True)
 
 
 class DocumentVersion(Base):
@@ -85,6 +197,20 @@ class DocumentVersion(Base):
     created_at = Column(DateTime, default=now)
 
 
+class DocumentAttachment(Base):
+    """Extra files attached to a document item (Docspell multi-file items)."""
+
+    __tablename__ = "document_attachments"
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    name = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    size = Column(Integer, default=0)
+    mime = Column(String)
+    role = Column(String, default="extracted")  # original, converted, extracted, preview
+    created_at = Column(DateTime, default=now)
+
+
 class Permission(Base):
     __tablename__ = "permissions"
     id = Column(Integer, primary_key=True, index=True)
@@ -96,6 +222,7 @@ class Permission(Base):
     can_write = Column(Boolean, default=False)
     can_delete = Column(Boolean, default=False)
     can_manage = Column(Boolean, default=False)
+    bits = Column(Integer, default=0)
 
 
 class AuditLog(Base):
@@ -120,6 +247,28 @@ class MetadataTemplate(Base):
     created_at = Column(DateTime, default=now)
 
 
+class CustomField(Base):
+    """Typed custom fields (Docspell) distinct from JSON metadata blobs."""
+
+    __tablename__ = "custom_fields"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True, nullable=False)
+    label = Column(String)
+    ftype = Column(String, default="text")  # text, number, date, bool, money
+    required = Column(Boolean, default=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+    collective_id = Column(Integer, ForeignKey("collectives.id"), nullable=True)
+
+
+class CustomFieldValue(Base):
+    __tablename__ = "custom_field_values"
+    id = Column(Integer, primary_key=True, index=True)
+    field_id = Column(Integer, ForeignKey("custom_fields.id"), nullable=False)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    value = Column(String)
+
+
 class ImportFolder(Base):
     __tablename__ = "import_folders"
     id = Column(Integer, primary_key=True, index=True)
@@ -132,6 +281,12 @@ class ImportFolder(Base):
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=now)
     last_scan = Column(DateTime)
+    protocol = Column(String, default="local")  # local | ftp | smb
+    host = Column(String)
+    port = Column(Integer)
+    username = Column(String)
+    password_enc = Column(String)
+    remote_path = Column(String)
 
 
 class Comment(Base):
@@ -144,6 +299,9 @@ class Comment(Base):
     x = Column(Integer)
     y = Column(Integer)
     created_at = Column(DateTime, default=now)
+    # Set when the comment arrived via a public share page; the account in
+    # user_id is then the share creator, not the person who wrote it.
+    author_name = Column(String)
 
 
 class ShareLink(Base):
@@ -156,6 +314,9 @@ class ShareLink(Base):
     max_downloads = Column(Integer, nullable=True)
     download_count = Column(Integer, default=0)
     created_at = Column(DateTime, default=now)
+    password_hash = Column(String)
+    name = Column(String)
+    kind = Column(String, default="download")  # download | view | comment
 
 
 class RetentionPolicy(Base):
@@ -175,6 +336,7 @@ class WorkflowTemplate(Base):
     name = Column(String, nullable=False)
     description = Column(String)
     steps = Column(JSON, default=list)
+    graph = Column(JSON, default=dict)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=now)
 
@@ -186,6 +348,8 @@ class WorkflowInstance(Base):
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
     status = Column(String, default="running")  # running, completed, rejected, cancelled
     current_step = Column(Integer, default=0)
+    current_node = Column(String)
+    tokens = Column(JSON, default=list)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=now)
     completed_at = Column(DateTime)
@@ -197,6 +361,7 @@ class Task(Base):
     instance_id = Column(Integer, ForeignKey("workflow_instances.id"), nullable=False)
     step_index = Column(Integer, nullable=False)
     step_name = Column(String, nullable=False)
+    node_id = Column(String)
     assignee_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     status = Column(String, default="pending")  # pending, approved, rejected, skipped
     comment = Column(String)
@@ -235,3 +400,571 @@ class RevokedToken(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     expires_at = Column(DateTime, nullable=False)  # original token expiry (UTC, naive)
     revoked_at = Column(DateTime, default=now)
+
+
+class ProcessingJob(Base):
+    """JOEX job queue: OCR, conversion, NLP, indexing, housekeeping."""
+
+    __tablename__ = "processing_jobs"
+    id = Column(Integer, primary_key=True, index=True)
+    kind = Column(String, nullable=False)  # process_document, notify_due, scan_mailbox, webhook
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
+    status = Column(String, default="queued")  # queued, running, done, error, cancelled
+    priority = Column(Integer, default=0)
+    progress = Column(Float, default=0.0)
+    message = Column(Text)
+    payload = Column(JSON, default=dict)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=now)
+    started_at = Column(DateTime)
+    finished_at = Column(DateTime)
+    attempts = Column(Integer, default=0)
+    max_attempts = Column(Integer, default=3)
+    log_text = Column(Text, default="")
+
+
+class Bookmark(Base):
+    """Saved query or starred folder/document."""
+
+    __tablename__ = "bookmarks"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    query = Column(String, nullable=False, default="")
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+    kind = Column(String, default="query")  # query | document | folder
+    resource_id = Column(Integer)
+
+
+class Dashboard(Base):
+    __tablename__ = "dashboards"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    layout = Column(JSON, default=list)  # list of widget descriptors
+    is_default = Column(Boolean, default=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+    collective_id = Column(Integer, ForeignKey("collectives.id"), nullable=True)
+    scope = Column(String, default="personal")  # personal | collective
+
+
+class AnonymousUpload(Base):
+    """Public upload URL with pre-applied metadata (Docspell anonymous upload)."""
+
+    __tablename__ = "anonymous_uploads"
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, unique=True, index=True, nullable=False)
+    name = Column(String, nullable=False)
+    folder_id = Column(Integer, ForeignKey("folders.id"), nullable=False)
+    tags = Column(String, default="")
+    correspondent_id = Column(Integer, ForeignKey("contacts.id"), nullable=True)
+    enabled = Column(Boolean, default=True)
+    max_files = Column(Integer, default=50)
+    upload_count = Column(Integer, default=0)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+    expires_at = Column(DateTime)
+    skip_duplicates = Column(Boolean, default=False)
+    priority = Column(Integer, default=0)
+    language = Column(String)
+
+
+class MailSettings(Base):
+    """Per-user SMTP (send) or IMAP (scan) settings. Secrets are encrypted at rest."""
+
+    __tablename__ = "mail_settings"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    kind = Column(String, nullable=False)  # smtp, imap
+    name = Column(String, nullable=False)
+    host = Column(String, nullable=False)
+    port = Column(Integer, default=587)
+    username = Column(String)
+    password_enc = Column(String)
+    use_ssl = Column(Boolean, default=True)
+    mailbox = Column(String, default="INBOX")
+    created_at = Column(DateTime, default=now)
+
+
+class NotificationRule(Base):
+    """Periodic query notification (due items / matching documents)."""
+
+    __tablename__ = "notification_rules"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String, nullable=False)
+    query = Column(String, nullable=False)
+    channel = Column(String, default="inapp")  # inapp, email
+    interval_hours = Column(Integer, default=24)
+    last_run = Column(DateTime)
+    enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=now)
+    include_tags = Column(String, default="")
+    exclude_tags = Column(String, default="")
+    channel_id = Column(Integer, ForeignKey("notify_channels.id"), nullable=True)
+    event = Column(String, default="query")  # query, item_created, tag_added, due_digest
+    mini_query = Column(JSON, default=dict)
+    digest = Column(Boolean, default=False)
+
+
+class Addon(Base):
+    """Webhook hook fired after document processing (Docspell addons, simplified)."""
+
+    __tablename__ = "addons"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    event = Column(String, default="on_process")  # on_upload, on_process, manual, schedule
+    webhook_url = Column(String)
+    enabled = Column(Boolean, default=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+    package_path = Column(String)
+    descriptor = Column(JSON, default=dict)
+    trigger = Column(String, default="on_process")
+    sandbox = Column(String, default="subprocess")  # subprocess | docker | nix
+
+
+class DocumentLink(Base):
+    __tablename__ = "document_links"
+    id = Column(Integer, primary_key=True, index=True)
+    src_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    dst_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    kind = Column(String, default="related")
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    resource_type = Column(String, nullable=False)
+    resource_id = Column(Integer, nullable=False)
+    events = Column(String, default="*")
+    created_at = Column(DateTime, default=now)
+
+
+class InternalMessage(Base):
+    __tablename__ = "internal_messages"
+    id = Column(Integer, primary_key=True, index=True)
+    from_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    to_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    subject = Column(String, nullable=False)
+    body = Column(Text, default="")
+    read = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=now)
+
+
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String, nullable=False)
+    prefix = Column(String, nullable=False, index=True)
+    key_hash = Column(String, nullable=False)
+    created_at = Column(DateTime, default=now)
+    last_used_at = Column(DateTime)
+
+
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+    id = Column(Integer, primary_key=True, index=True)
+    jti = Column(String, unique=True, index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    ip = Column(String)
+    user_agent = Column(String)
+    created_at = Column(DateTime, default=now)
+    last_seen_at = Column(DateTime, default=now)
+    expires_at = Column(DateTime)
+    revoked = Column(Boolean, default=False)
+
+
+class LoginHistory(Base):
+    __tablename__ = "login_history"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    username = Column(String)
+    ip = Column(String)
+    user_agent = Column(String)
+    success = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=now)
+
+
+class TrustedDevice(Base):
+    __tablename__ = "trusted_devices"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    fingerprint = Column(String, nullable=False)
+    name = Column(String)
+    created_at = Column(DateTime, default=now)
+    last_seen_at = Column(DateTime, default=now)
+
+
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+    key = Column(String, primary_key=True)
+    value = Column(Text)
+    updated_at = Column(DateTime, default=now)
+
+
+class ScheduledTask(Base):
+    __tablename__ = "scheduled_tasks"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False)
+    kind = Column(String, nullable=False)
+    interval_minutes = Column(Integer, default=60)
+    enabled = Column(Boolean, default=True)
+    last_run = Column(DateTime)
+    last_status = Column(String)
+    last_message = Column(Text)
+
+
+class StorageStore(Base):
+    __tablename__ = "stores"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    kind = Column(String, default="fs")  # fs | db | s3
+    path = Column(String, nullable=False, default="")
+    is_default = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=now)
+    config = Column(JSON, default=dict)
+
+
+class FolderTemplate(Base):
+    __tablename__ = "folder_templates"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    tree = Column(JSON, default=list)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class WorkflowTrigger(Base):
+    __tablename__ = "workflow_triggers"
+    id = Column(Integer, primary_key=True, index=True)
+    folder_id = Column(Integer, ForeignKey("folders.id"), nullable=False)
+    template_id = Column(Integer, ForeignKey("workflow_templates.id"), nullable=False)
+    event = Column(String, default="create")
+    created_at = Column(DateTime, default=now)
+
+
+class NamingScheme(Base):
+    __tablename__ = "naming_schemes"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    pattern = Column(String, nullable=False)
+    folder_id = Column(Integer, ForeignKey("folders.id"), nullable=True)
+    created_at = Column(DateTime, default=now)
+
+
+class Organization(Base):
+    """First-class organization matched by name, website, or email domain."""
+
+    __tablename__ = "organizations"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    websites = Column(JSON, default=list)
+    emails = Column(JSON, default=list)
+    notes = Column(String)
+    collective_id = Column(Integer, ForeignKey("collectives.id"), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=now)
+
+
+class Equipment(Base):
+    """Named asset catalog matched during processing."""
+
+    __tablename__ = "equipment"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    notes = Column(String)
+    collective_id = Column(Integer, ForeignKey("collectives.id"), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=now)
+
+
+class CollectiveMember(Base):
+    __tablename__ = "collective_members"
+    id = Column(Integer, primary_key=True, index=True)
+    collective_id = Column(Integer, ForeignKey("collectives.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    role = Column(String, default="member")  # owner, member
+    created_at = Column(DateTime, default=now)
+
+
+class MailboxTask(Base):
+    """Periodic IMAP scan with globs, move-after-import, and schedule."""
+
+    __tablename__ = "mailbox_tasks"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    mail_settings_id = Column(Integer, ForeignKey("mail_settings.id"), nullable=False)
+    folder_id = Column(Integer, ForeignKey("folders.id"), nullable=False)
+    imap_folders = Column(String, default="INBOX")
+    received_since_hours = Column(Integer, default=72)
+    subject_glob = Column(String, default="*")
+    file_glob = Column(String, default="*")
+    move_after_import = Column(String)
+    direction_from_from = Column(Boolean, default=True)
+    schedule_minutes = Column(Integer, default=15)
+    start_once = Column(Boolean, default=False)
+    enabled = Column(Boolean, default=True)
+    last_run = Column(DateTime)
+    last_uid = Column(String)
+    source_id = Column(Integer, ForeignKey("anonymous_uploads.id"), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class NotifyChannel(Base):
+    """Matrix, Gotify, HTTP webhook, or email delivery channel."""
+
+    __tablename__ = "notify_channels"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String, nullable=False)
+    kind = Column(String, nullable=False)  # matrix, gotify, http, email
+    config = Column(JSON, default=dict)
+    enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=now)
+
+
+class EventHook(Base):
+    """Fire a channel when an event matches a mini-query filter."""
+
+    __tablename__ = "event_hooks"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String, nullable=False)
+    event = Column(String, nullable=False)  # item_created, tag_added, item_confirmed, due
+    channel_id = Column(Integer, ForeignKey("notify_channels.id"), nullable=False)
+    mini_query = Column(JSON, default=dict)
+    enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=now)
+
+
+class QueryShare(Base):
+    """Public share whose contents are a live query (or a static id list)."""
+
+    __tablename__ = "query_shares"
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, unique=True, index=True, nullable=False)
+    name = Column(String, nullable=False)
+    query = Column(String, default="")
+    static_ids = Column(JSON, default=list)
+    publish_until = Column(DateTime)
+    enabled = Column(Boolean, default=True)
+    password_hash = Column(String)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class FileBlob(Base):
+    """Database-backed file storage."""
+
+    __tablename__ = "file_blobs"
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String, unique=True, index=True, nullable=False)
+    content = Column(LargeBinary, nullable=False)
+    size = Column(Integer, default=0)
+    mime = Column(String)
+    created_at = Column(DateTime, default=now)
+
+
+class JobLog(Base):
+    __tablename__ = "job_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("processing_jobs.id"), nullable=False, index=True)
+    level = Column(String, default="info")
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class MailTemplate(Base):
+    __tablename__ = "mail_templates"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String, nullable=False)
+    subject = Column(String, default="")
+    body = Column(Text, default="")
+    created_at = Column(DateTime, default=now)
+
+
+class OidcState(Base):
+    __tablename__ = "oidc_states"
+    id = Column(Integer, primary_key=True, index=True)
+    state = Column(String, unique=True, index=True, nullable=False)
+    nonce = Column(String, nullable=False)
+    created_at = Column(DateTime, default=now)
+    expires_at = Column(DateTime, nullable=False)
+
+
+class VectorChunk(Base):
+    __tablename__ = "vector_chunks"
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False, index=True)
+    ordinal = Column(Integer, default=0)
+    text = Column(Text, default="")
+    vector = Column(JSON, default=list)
+
+
+class AutomationRule(Base):
+    __tablename__ = "automation_rules"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    event = Column(String, default="document_created")
+    condition = Column(JSON, default=dict)
+    actions = Column(JSON, default=list)
+    enabled = Column(Boolean, default=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=now)
+
+
+class CaptureForm(Base):
+    __tablename__ = "capture_forms"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    token = Column(String, unique=True, index=True, nullable=False)
+    schema_json = Column("schema", JSON, default=dict)
+    folder_id = Column(Integer, ForeignKey("folders.id"), nullable=False)
+    enabled = Column(Boolean, default=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class FormSubmission(Base):
+    __tablename__ = "form_submissions"
+    id = Column(Integer, primary_key=True, index=True)
+    form_id = Column(Integer, ForeignKey("capture_forms.id"), nullable=False)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
+    payload = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=now)
+
+
+class ZoneTemplate(Base):
+    __tablename__ = "zone_templates"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    zones = Column(JSON, default=list)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=now)
+
+
+class LegalHold(Base):
+    __tablename__ = "legal_holds"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    reason = Column(Text)
+    active = Column(Boolean, default=True)
+    until = Column(DateTime)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+    released_at = Column(DateTime)
+
+
+class LegalHoldItem(Base):
+    __tablename__ = "legal_hold_items"
+    id = Column(Integer, primary_key=True, index=True)
+    hold_id = Column(Integer, ForeignKey("legal_holds.id"), nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False, index=True)
+
+
+class RedactionRule(Base):
+    __tablename__ = "redaction_rules"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    patterns = Column(JSON, default=list)
+    enabled = Column(Boolean, default=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=now)
+
+
+class Case(Base):
+    __tablename__ = "cases"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    status = Column(String, default="open")
+    bpmn_id = Column(Integer, nullable=True)
+    data = Column(JSON, default=dict)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+    closed_at = Column(DateTime)
+
+
+class CaseDocument(Base):
+    __tablename__ = "case_documents"
+    id = Column(Integer, primary_key=True, index=True)
+    case_id = Column(Integer, ForeignKey("cases.id"), nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False, index=True)
+
+
+class ReadingConfirmation(Base):
+    __tablename__ = "reading_confirmations"
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    confirmed_at = Column(DateTime, default=now)
+    note = Column(String)
+
+
+class ClusterNode(Base):
+    __tablename__ = "cluster_nodes"
+    id = Column(Integer, primary_key=True, index=True)
+    node_id = Column(String, unique=True, index=True, nullable=False)
+    role = Column(String, default="api")
+    host = Column(String)
+    alive = Column(Boolean, default=True)
+    last_seen = Column(DateTime, default=now)
+
+
+class ReportDefinition(Base):
+    __tablename__ = "report_definitions"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    query = Column(String, default="")
+    group_by = Column(String)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class BpmnDefinition(Base):
+    __tablename__ = "bpmn_definitions"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    xml = Column(Text, nullable=False)
+    graph = Column(JSON, default=dict)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=now)
+
+
+class ConnectorAccount(Base):
+    __tablename__ = "connector_accounts"
+    id = Column(Integer, primary_key=True, index=True)
+    kind = Column(String, nullable=False)  # azure, smb, gdrive, docusign, onlyoffice, outlook, gcal, sap
+    name = Column(String, nullable=False)
+    config = Column(JSON, default=dict)
+    enabled = Column(Boolean, default=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=now)
+
+
+class ArchiveLinkEntry(Base):
+    __tablename__ = "archivelink_entries"
+    id = Column(Integer, primary_key=True, index=True)
+    cont_rep = Column(String, nullable=False, index=True)
+    doc_id = Column(String, nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
+    file_path = Column(String)
+    mime = Column(String)
+    size = Column(Integer, default=0)
+    created_at = Column(DateTime, default=now)
+
+
+class CollabOp(Base):
+    __tablename__ = "collab_ops"
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False, index=True)
+    rev = Column(Integer, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    op = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=now)

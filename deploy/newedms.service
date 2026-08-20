@@ -1,0 +1,44 @@
+# systemd unit for NewEDMS on Ubuntu.
+# Install:  sudo cp deploy/newedms.service /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now newedms
+#
+# Expects:
+#   - application at /opt/newedms (user:group newedms:newedms)
+#   - virtualenv at /opt/newedms/venv
+#   - environment file at /etc/newedms/newedms.env (see .env.example; NEVER commit it)
+#   - writable data dir, e.g. /var/lib/newedms (EDMS_STORAGE_DIR)
+
+[Unit]
+Description=NewEDMS document management system
+After=network.target
+# Uncomment when using the local PostgreSQL server instead of SQLite:
+# Wants=postgresql.service
+# After=postgresql.service
+
+[Service]
+Type=exec
+User=newedms
+Group=newedms
+WorkingDirectory=/opt/newedms
+EnvironmentFile=/etc/newedms/newedms.env
+
+# Apply database migrations on every boot/start.
+ExecStartPre=/opt/newedms/venv/bin/alembic upgrade head
+
+# SQLite: keep --workers 1 (multiple writers corrupt the file).
+# PostgreSQL: raise workers as needed, and keep --proxy-headers behind nginx.
+ExecStart=/opt/newedms/venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers
+
+Restart=on-failure
+RestartSec=5
+
+# Sandboxing
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/newedms
+
+[Install]
+WantedBy=multi-user.target

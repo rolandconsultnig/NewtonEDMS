@@ -12,7 +12,7 @@ from pathlib import Path
 from app import database
 from app.config import settings
 
-logger = logging.getLogger("newedms.indexing")
+logger = logging.getLogger("newtonedms.indexing")
 
 def _index_dir() -> Path:
     # Resolved per call so runtime storage overrides (and tests) are honoured.
@@ -162,13 +162,26 @@ def _extract_text(path: Path, mime: str) -> tuple[str, str]:
     return text, barcodes
 
 
-def index_document(doc_id: int, title: str, tags: str, file_path: str, size: int) -> None:
+def index_document(
+    doc_id: int,
+    title: str,
+    tags: str,
+    file_path: str,
+    size: int,
+    content_override: str | None = None,
+) -> None:
     """Add or update a document in the full-text index."""
     try:
         from whoosh.writing import AsyncWriter
 
         ix = _ensure_index()
-        text, barcodes = _extract_text(Path(file_path), "")
+        barcodes = ""
+        if content_override is not None:
+            text = content_override
+        elif file_path:
+            text, barcodes = _extract_text(Path(file_path), "")
+        else:
+            text = ""
         writer = AsyncWriter(ix)
         writer.update_document(
             doc_id=str(doc_id),

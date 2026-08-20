@@ -49,7 +49,7 @@ def _validated_steps(raw_steps) -> list[WorkflowStep]:
     return steps
 
 
-def _create_task(db: Session, instance: WorkflowInstance, step_index: int, step: WorkflowStep):
+def _create_task(db: Session, instance: WorkflowInstance, step_index: int, step: WorkflowStep, node_id: str | None = None):
     assignee = _resolve_assignee(db, step)
     due = now() + timedelta(days=step.due_days) if step.due_days else None
     t = Task(
@@ -58,6 +58,7 @@ def _create_task(db: Session, instance: WorkflowInstance, step_index: int, step:
         step_name=step.name,
         assignee_id=assignee.id if assignee else None,
         due_at=due,
+        node_id=node_id,
     )
     db.add(t)
     db.flush()
@@ -69,6 +70,152 @@ def _create_task(db: Session, instance: WorkflowInstance, step_index: int, step:
             )
         )
     return t
+
+
+def _graph_definition(template: WorkflowTemplate):
+    from app.bpmn import from_graph_json
+
+    graph = template.graph or {}
+    if not (graph.get("nodes") or graph.get("edges")):
+        return None
+    return from_graph_json(graph, template.steps)
+
+
+def _run_service_task(db: Session, doc: Document, node) -> None:
+    action = (node.action or "").lower()
+    if action == "watermark":
+        from pathlib import Path
+        from app.pdfops import watermark
+        from app.storage import doc_storage_dir
+
+        src = Path(doc.pdf_file_path or doc.file_path)
+        if src.exists():
+            dest = doc_storage_dir(doc.id) / "watermarked.pdf"
+            watermark(src, dest, "WORKFLOW")
+            doc.pdf_file_path = str(dest)
+    elif action == "archive":
+        doc.status = "archived"
+    elif action == "approve":
+        doc.status = "approved"
+
+
+def _close_bpmn_case(db: Session, template: WorkflowTemplate | None) -> None:
+    """When a BPMN-backed workflow finishes, close matching cases."""
+    if not template or not (template.name or "").startswith("bpmn:"):
+        return
+    try:
+        bpmn_id = int(template.name.split(":", 1)[1])
+    except (TypeError, ValueError):
+        return
+    from app.models import Case
+
+    for case in db.query(Case).filter(Case.bpmn_id == bpmn_id, Case.status != "closed").all():
+        case.status = "closed"
+        case.closed_at = now()
+
+
+def _advance_graph(db: Session, inst: WorkflowInstance, template: WorkflowTemplate, from_node: str, context: dict, approved: bool = True) -> None:
+    from app.bpmn import next_nodes
+
+    d = db.get(Document, inst.document_id)
+    definition = _graph_definition(template)
+    if not definition:
+        return
+    if not approved:
+        inst.status = "rejected"
+        inst.completed_at = now()
+        if d:
+            d.status = "draft"
+            d.updated_at = now()
+            db.add(Notification(user_id=inst.created_by, message=f"Workflow rejected for document {d.id}"))
+        return
+    queue = list(next_nodes(definition, from_node, context))
+    seen: set[str] = set()
+    pending = []
+    while queue:
+        nid = queue.pop(0)
+        if nid in seen:
+            continue
+        seen.add(nid)
+        node = definition.nodes.get(nid)
+        if not node or node.type in ("end", "endEvent"):
+            continue
+        if node.type in ("start", "startEvent", "exclusiveGateway", "parallelGateway"):
+            queue.extend(next_nodes(definition, nid, context))
+            continue
+        if node.type == "serviceTask":
+            if d:
+                _run_service_task(db, d, node)
+            queue.extend(next_nodes(definition, nid, context))
+            continue
+        pending.append(node)
+    if not pending:
+        inst.status = "completed"
+        inst.completed_at = now()
+        if d:
+            d.status = "approved"
+            d.updated_at = now()
+            db.add(Notification(user_id=inst.created_by, message=f"Workflow completed for document {d.id}"))
+        _close_bpmn_case(db, template)
+        return
+    inst.current_node = pending[0].id
+    inst.tokens = [n.id for n in pending]
+    for node in pending:
+        step = WorkflowStep(
+            name=node.name,
+            assignee_role=node.assignee_role,
+            assignee_id=node.assignee_id,
+            due_days=node.due_days,
+        )
+        inst.current_step = (inst.current_step or 0) + 1
+        _create_task(db, inst, inst.current_step, step, node_id=node.id)
+    if d:
+        d.status = "review"
+        d.updated_at = now()
+
+
+def start_workflow_internal(db: Session, doc_id: int, template_id: int, created_by: int) -> WorkflowInstance:
+    """Start a workflow without HTTP; used by folder triggers and automation rules."""
+    d = db.get(Document, doc_id)
+    w = db.get(WorkflowTemplate, template_id)
+    if not d or not w:
+        raise ValueError("document or template missing")
+    if (
+        db.query(WorkflowInstance)
+        .filter(WorkflowInstance.document_id == doc_id, WorkflowInstance.status == "running")
+        .first()
+    ):
+        raise ValueError("A workflow is already running on this document")
+    definition = _graph_definition(w)
+    inst = WorkflowInstance(
+        template_id=w.id,
+        document_id=doc_id,
+        status="running",
+        current_step=0,
+        created_by=created_by,
+    )
+    db.add(inst)
+    db.flush()
+    if definition and definition.start:
+        inst.current_node = definition.start
+        context = {"status": d.status, "tags": d.tags or "", "approved": "true"}
+        _advance_graph(db, inst, w, definition.start, context, approved=True)
+    else:
+        try:
+            steps = _validated_steps(w.steps)
+        except HTTPException as exc:
+            raise ValueError(exc.detail) from exc
+        if not steps:
+            raise ValueError("Workflow has no steps")
+        if not _resolve_assignee(db, steps[0]):
+            raise ValueError(f"Step '{steps[0].name}' has no assignable user")
+        _create_task(db, inst, 0, steps[0])
+        if d.status == "draft":
+            d.status = "review"
+            d.updated_at = now()
+    db.commit()
+    db.refresh(inst)
+    return inst
 
 
 @router.get("/workflows", response_model=list[WorkflowTemplateOut])
@@ -135,38 +282,12 @@ def start_workflow(
     w = db.get(WorkflowTemplate, template_id)
     if not w:
         raise HTTPException(status_code=404, detail="Workflow template not found")
-    # A document runs at most one workflow at a time (concurrent instances would
-    # both mutate its status).
-    if (
-        db.query(WorkflowInstance)
-        .filter(WorkflowInstance.document_id == doc_id, WorkflowInstance.status == "running")
-        .first()
-    ):
-        raise HTTPException(status_code=409, detail="A workflow is already running on this document")
-    steps = _validated_steps(w.steps)
-    if not steps:
-        raise HTTPException(status_code=400, detail="Workflow has no steps")
-    # Refuse to start if the first step cannot be assigned: an unassigned task
-    # can never be acted on and would deadlock the workflow.
-    if not _resolve_assignee(db, steps[0]):
-        raise HTTPException(
-            status_code=400, detail=f"Step '{steps[0].name}' has no assignable user"
-        )
-    inst = WorkflowInstance(
-        template_id=w.id,
-        document_id=doc_id,
-        status="running",
-        current_step=0,
-        created_by=user.id,
-    )
-    db.add(inst)
-    db.flush()
-    _create_task(db, inst, 0, steps[0])
-    if d.status == "draft":
-        d.status = "review"
-        d.updated_at = now()
-    db.commit()
-    db.refresh(inst)
+    try:
+        inst = start_workflow_internal(db, doc_id, template_id, created_by=user.id)
+    except ValueError as exc:
+        msg = str(exc)
+        code = 409 if "already running" in msg else 400
+        raise HTTPException(status_code=code, detail=msg) from exc
     audit(db, user, "WORKFLOW_START", "workflow_instance", inst.id, f"Template {w.id} on document {doc_id}")
     return inst
 
@@ -209,6 +330,7 @@ def list_tasks(
             "document_id": doc_id,
             "status": t.status,
             "comment": t.comment,
+            "node_id": t.node_id,
             "due_at": t.due_at,
             "completed_at": t.completed_at,
             "created_at": t.created_at,
@@ -261,11 +383,22 @@ def task_action(
         raise HTTPException(status_code=400, detail="Task already resolved")
     db.refresh(t)
 
-    steps = _validated_steps(db.get(WorkflowTemplate, inst.template_id).steps)
+    tpl = db.get(WorkflowTemplate, inst.template_id)
+    definition = _graph_definition(tpl) if tpl else None
+    steps = []
+    if not definition:
+        steps = _validated_steps(tpl.steps if tpl else [])
 
     t.comment = payload.comment or ""
-
-    if payload.approved:
+    if definition and (t.node_id or inst.current_node):
+        context = {
+            "status": d.status,
+            "tags": d.tags or "",
+            "approved": "true" if payload.approved else "false",
+            "decision": "approved" if payload.approved else "rejected",
+        }
+        _advance_graph(db, inst, tpl, t.node_id or inst.current_node, context, approved=payload.approved)
+    elif payload.approved:
         inst.current_step += 1
         if inst.current_step >= len(steps):
             inst.status = "completed"
@@ -273,6 +406,7 @@ def task_action(
             d.status = "approved"
             d.updated_at = now()
             db.add(Notification(user_id=inst.created_by, message=f"Workflow completed for document {d.id}"))
+            _close_bpmn_case(db, tpl)
         else:
             _create_task(db, inst, inst.current_step, steps[inst.current_step])
             d.status = "review"
@@ -298,6 +432,7 @@ def task_action(
         "document_id": d.id,
         "status": t.status,
         "comment": t.comment,
+        "node_id": t.node_id,
         "due_at": t.due_at,
         "completed_at": t.completed_at,
         "created_at": t.created_at,

@@ -32,6 +32,25 @@ def test_missing_token_is_unauthorized(client):
     assert client.get("/api/auth/me").status_code == 401
 
 
+def test_session_probe_is_ok_without_cookie(client):
+    resp = client.get("/api/auth/session")
+    assert resp.status_code == 200
+    assert resp.json() == {"user": None}
+
+
+def test_session_probe_returns_user_when_logged_in(client):
+    login(client)
+    resp = client.get("/api/auth/session")
+    assert resp.status_code == 200
+    assert resp.json()["user"]["username"] == "admin"
+
+
+def test_favicon_is_served(client):
+    resp = client.get("/favicon.ico")
+    assert resp.status_code == 200
+    assert "image/svg" in resp.headers.get("content-type", "")
+
+
 def test_invalid_token_is_unauthorized(client):
     resp = client.get("/api/auth/me", headers={"Authorization": "Bearer not-a-jwt"})
     assert resp.status_code == 401
@@ -49,11 +68,21 @@ def test_me_returns_current_user(client, admin_token):
 def test_login_sets_httponly_cookie_used_for_auth(client):
     r = client.post("/api/auth/login", data={"username": "admin", "password": "admin123"})
     assert r.status_code == 200
-    assert "edms_token" in r.cookies
+    assert "newton_token" in r.cookies
     # No Authorization header -> the cookie must authenticate the request.
     me = client.get("/api/auth/me")
     assert me.status_code == 200
     assert me.json()["username"] == "admin"
+
+
+def test_login_remember_extends_cookie(client):
+    r = client.post(
+        "/api/auth/login",
+        data={"username": "admin", "password": "admin123", "remember": "1"},
+    )
+    assert r.status_code == 200
+    header = (r.headers.get("set-cookie") or "").lower()
+    assert "max-age=2592000" in header
 
 
 def test_logout_revokes_token_and_clears_cookie(client):
