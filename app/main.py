@@ -98,6 +98,14 @@ app.add_middleware(
 
 
 @app.middleware("http")
+async def path_normalization_middleware(request: Request, call_next):
+    """Normalize accidentally duplicated /api/api/ prefixes."""
+    if request.scope.get("path", "").startswith("/api/api/"):
+        request.scope["path"] = request.scope["path"][4:]
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def security_headers(request: Request, call_next):
     """Attach defensive browser headers to every response."""
     response = await call_next(request)
