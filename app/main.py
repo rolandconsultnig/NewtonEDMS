@@ -102,7 +102,28 @@ async def security_headers(request: Request, call_next):
     """Attach defensive browser headers to every response."""
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("X-Frame-Options", "DENY")
+    
+    path = request.url.path
+    is_framable = (
+        path.startswith("/wopi")
+        or path.startswith("/api/office/wopi")
+        or path.startswith("/static/office-addin")
+        or path.startswith("/api/shares")
+        or "/wopi/frame" in path
+    )
+    if is_framable:
+        # Allow embedding in Office 365, Teams, OnlyOffice, Collabora, and local preview
+        if "x-frame-options" in response.headers:
+            del response.headers["x-frame-options"]
+        if "X-Frame-Options" in response.headers:
+            del response.headers["X-Frame-Options"]
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "frame-ancestors 'self' https://*.office.com https://*.office365.com https://*.live.com https://*.microsoft.com https://*.sharepoint.com http://* https://*;",
+        )
+    else:
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=(self)")
     if settings.cookie_secure:

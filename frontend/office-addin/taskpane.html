@@ -4,12 +4,50 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NewtonEDMS Office Integration</title>
-  <!-- Office.js library -->
+  <!-- Microsoft Office.js -->
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <link rel="stylesheet" href="/static/fontawesome/all.min.css">
   <link rel="stylesheet" href="/static/office-addin/taskpane.css">
+  <style>
+    /* In-taskpane auth & toast enhancements */
+    .auth-banner { background: #1e293b; border-bottom: 1px solid #334155; padding: 6px 12px; font-size: 11px; display: flex; justify-content: space-between; align-items: center; }
+    .auth-user { display: flex; align-items: center; gap: 6px; color: #38bdf8; font-weight: 500; }
+    .auth-btn { background: transparent; border: 1px solid #475569; color: #94a3b8; font-size: 10px; padding: 2px 6px; border-radius: 4px; cursor: pointer; }
+    .auth-btn:hover { background: #334155; color: #fff; }
+    .login-overlay { position: fixed; inset: 0; background: #0f172a; z-index: 999; display: flex; flex-direction: column; justify-content: center; padding: 24px; }
+    .login-card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    .toast-container { position: fixed; bottom: 12px; left: 12px; right: 12px; z-index: 1000; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+    .toast-msg { padding: 8px 12px; border-radius: 6px; font-size: 12px; color: #fff; background: #0284c7; box-shadow: 0 4px 12px rgba(0,0,0,0.3); animation: slideUp 0.2s ease-out; }
+    .toast-msg.error { background: #e11d48; }
+    .toast-msg.success { background: #059669; }
+    @keyframes slideUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  </style>
 </head>
 <body>
+
+  <!-- Toast Notification Host -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Login Modal / Overlay -->
+  <div class="login-overlay" id="login-overlay" style="display:none">
+    <div class="login-card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <i class="fa-solid fa-folder-tree" style="color:#38bdf8;font-size:20px"></i>
+        <strong style="font-size:15px;color:#f8fafc">NewtonEDMS Sign-In</strong>
+      </div>
+      <p style="color:#94a3b8;font-size:12px;margin-bottom:14px">Connect this Office application to your NewtonEDMS repository.</p>
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="login-username" placeholder="admin" value="admin">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="login-password" placeholder="Password">
+      </div>
+      <button class="btn" onclick="loginAddin()"><i class="fa-solid fa-right-to-bracket"></i> Connect to Repository</button>
+      <div id="login-error" style="color:#f43f5e;font-size:11px;margin-top:8px"></div>
+    </div>
+  </div>
 
   <div class="header">
     <div class="brand">
@@ -17,6 +55,11 @@
       <span>NewtonEDMS</span>
     </div>
     <span class="host-badge" id="host-type">Office 365</span>
+  </div>
+
+  <div class="auth-banner" id="auth-banner">
+    <div class="auth-user"><i class="fa-solid fa-user-circle"></i> <span id="current-username">Checking session…</span></div>
+    <button class="auth-btn" id="auth-action-btn" onclick="toggleAuth()">Switch User</button>
   </div>
 
   <div class="nav-tabs">
@@ -45,7 +88,7 @@
   <!-- TAB 1: REPOSITORY EXPLORER -->
   <div class="tab-content active" id="tab-explorer">
     <div class="form-group">
-      <input type="search" id="search-box" placeholder="Search NewtonEDMS documents…" onkeydown="if(event.key==='Enter')searchDocs()">
+      <input type="search" id="search-box" placeholder="Search documents & metadata…" onkeydown="if(event.key==='Enter')searchDocs()">
     </div>
     <div class="form-group">
       <select id="folder-filter" onchange="loadDocs(this.value)">
@@ -63,7 +106,7 @@
   <div class="tab-content" id="tab-save">
     <div class="alert alert-info">
       <i class="fa-solid fa-circle-info"></i>
-      <span>Save the active document directly into NewtonEDMS repository.</span>
+      <span>Save active document directly into NewtonEDMS repository.</span>
     </div>
     <div class="form-group">
       <label>Destination Folder</label>
@@ -71,16 +114,23 @@
     </div>
     <div class="form-group">
       <label>Document Title / Filename</label>
-      <input type="text" id="save-title" placeholder="Document Name (e.g. Contract.docx)">
+      <input type="text" id="save-title" placeholder="Document Name (e.g. Agreement.docx)">
     </div>
     <div class="form-group">
       <label>Tags (comma separated)</label>
-      <input type="text" id="save-tags" placeholder="legal, contract, 2026">
+      <input type="text" id="save-tags" placeholder="contract, legal, 2026">
     </div>
     <div class="form-group">
-      <label>Version Note</label>
+      <label>Version / Check-In Note</label>
       <textarea id="save-comment" rows="2" placeholder="Saved from Microsoft Office Add-in"></textarea>
     </div>
+
+    <!-- Standalone browser fallback upload file picker -->
+    <div class="form-group" id="browser-file-group" style="display:none">
+      <label>Select Local File</label>
+      <input type="file" id="browser-file-input">
+    </div>
+
     <button class="btn" id="btn-save-doc" onclick="saveActiveDocument()"><i class="fa-solid fa-floppy-disk"></i> Save & Check-In</button>
     <div id="save-status" style="margin-top:10px"></div>
   </div>
@@ -92,10 +142,10 @@
       <div class="card-sub">Insert standard NewtonEDMS dynamic fields into document cursor</div>
       <div class="form-group" style="margin-top:10px">
         <select id="meta-field-select">
-          <option value="NewtonEDMS — Document Management">System Watermark</option>
-          <option value="DocID: #1042">Document ID Stamp</option>
+          <option value="NewtonEDMS — Secure Document Repository">System Watermark</option>
           <option value="Confidential & Proprietary">Classification Notice</option>
-          <option value="Approved via NewtonEDMS Workflow">Approval Stamp</option>
+          <option value="Approved via NewtonEDMS Digital Workflow">Approval Stamp</option>
+          <option value="Retention Period: 7 Years">Retention Notice</option>
         </select>
       </div>
       <button class="btn btn-secondary" onclick="insertSelectedMetadata()"><i class="fa-solid fa-arrow-down-to-bracket"></i> Insert Field</button>
@@ -118,8 +168,8 @@
       <span>Archive active Outlook email and attachments to NewtonEDMS.</span>
     </div>
     <div class="card">
-      <div class="card-title" id="mail-subject">No email selected</div>
-      <div class="card-sub" id="mail-from"></div>
+      <div class="card-title" id="mail-subject">No active email selected</div>
+      <div class="card-sub" id="mail-from">Select an email in Outlook to view details</div>
     </div>
     <div class="form-group">
       <label>Destination Folder</label>
@@ -145,5 +195,6 @@
   </div>
 
   <script src="/static/office-addin/taskpane.js"></script>
+
 </body>
 </html>

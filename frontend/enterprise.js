@@ -221,7 +221,7 @@ async function createZone() {
   await apiFetch("/zones", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: val("zn-name"), zones: JSON.parse(val("zn-json") || "[]") }) });
   adminTab("zones");
 }
-async function trainIdp() { const r = await apiFetch("/idp/train", { method: "POST" }); alert(JSON.stringify(r)); }
+async function trainIdp() { const r = await apiFetch("/idp/train", { method: "POST" }); toast("Classifier trained successfully: " + JSON.stringify(r)); }
 async function createHold() {
   const ids = val("lh-ids").split(",").map((x) => parseInt(x.trim(), 10)).filter(Boolean);
   await apiFetch("/legal-holds", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: val("lh-name"), reason: val("lh-reason"), document_ids: ids }) });
@@ -383,11 +383,14 @@ async function renderPdfOps(body) {
 }
 async function doWatermark() {
   await apiFetch(`/documents/${currentDocId}/watermark`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: val("wm-text") || "CONFIDENTIAL" }) });
-  alert("Watermark applied");
+  toast("Watermark applied successfully", "success");
+  if (typeof openDoc === "function") await openDoc(currentDocId);
 }
 async function doStamp() {
   const fd = new FormData(); fd.append("text", val("st-text") || "STAMPED");
   await apiFetch(`/documents/${currentDocId}/stamp`, { method: "POST", body: fd });
+  toast("Digital stamp applied", "success");
+  if (typeof openDoc === "function") await openDoc(currentDocId);
 }
 async function doSign() {
   const reason = prompt("Why are you signing this document?", val("sign-reason") || "approved");
@@ -395,8 +398,12 @@ async function doSign() {
   const fd = new FormData(); fd.append("reason", reason || "approved");
   try {
     const r = await apiFetch(`/documents/${currentDocId}/sign`, { method: "POST", body: fd });
-    if (r) { await openDoc(currentDocId); inspTab("pdfops"); }
-  } catch (e) { alert(e.message); }
+    if (r) {
+      toast("Document signed digitally", "success");
+      await openDoc(currentDocId);
+      inspTab("pdfops");
+    }
+  } catch (e) { toast(e.message, "error"); }
 }
 async function verifySignatureNow() {
   const r = await apiFetch(`/documents/${currentDocId}/sign/verify`).catch(() => null);
@@ -408,15 +415,26 @@ async function verifySignatureNow() {
 }
 async function doRedact() {
   await apiFetch(`/documents/${currentDocId}/redact`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ patterns: [val("rd-pat") || "\\b\\d{3}-\\d{2}-\\d{4}\\b"] }) });
-  alert("Redacted");
+  toast("Auto-redaction applied", "success");
+  if (typeof openDoc === "function") await openDoc(currentDocId);
 }
-async function doSplitPdf() { const r = await apiFetch(`/documents/${currentDocId}/split`, { method: "POST" }); alert(`${r.count} pages`); }
-async function runIdpNow() { const r = await apiFetch(`/documents/${currentDocId}/idp`, { method: "POST" }); alert(JSON.stringify(r.captured || {})); }
-async function embedNow() { await apiFetch(`/documents/${currentDocId}/embed`, { method: "POST" }); alert("Embedded"); }
+async function doSplitPdf() {
+  const r = await apiFetch(`/documents/${currentDocId}/split`, { method: "POST" });
+  toast(`Split completed: ${r.count || (r.ids ? r.ids.length : 0)} pages created`, "success");
+  if (typeof refreshCurrentList === "function") refreshCurrentList();
+}
+async function runIdpNow() {
+  const r = await apiFetch(`/documents/${currentDocId}/idp`, { method: "POST" });
+  toast("IDP capture completed: " + Object.keys(r.captured || {}).length + " fields captured", "success");
+}
+async function embedNow() {
+  await apiFetch(`/documents/${currentDocId}/embed`, { method: "POST" });
+  toast("Document embedded and indexed for RAG vector search", "success");
+}
 async function confirmReadCurrent() {
   if (!currentDocId) return;
   await apiFetch(`/documents/${currentDocId}/confirm-read`, { method: "POST" });
-  alert("Reading confirmed");
+  toast("Reading confirmed and recorded in audit log", "success");
 }
 async function openRagChat() {
   navTo("admin");
@@ -526,5 +544,5 @@ async function saveWfCanvas(id) {
     name: n.name, assignee_role: n.assignee_role || "admin", assignee_id: n.assignee_id || null, due_days: n.due_days || 3,
   }));
   await apiFetch(`/workflows/${id}/graph`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ graph, steps }) });
-  alert("Workflow graph saved");
+  toast("Workflow graph saved successfully", "success");
 }

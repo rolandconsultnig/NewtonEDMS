@@ -10,8 +10,8 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.models import Document, Folder, User
+from app.database import get_db, now
+from app.models import Document, Folder, ShareLink, User
 from app.permissions import has_permission
 from app.security import get_current_user, get_optional_user, verify_password
 
@@ -29,6 +29,14 @@ def _dav_user(
 ) -> User:
     if user:
         return user
+    # Check token in query param (?token=...) or Header (X-Share-Token / Authorization)
+    token = request.query_params.get("token") or request.headers.get("X-Share-Token")
+    if token:
+        share = db.query(ShareLink).filter(ShareLink.token == token).first()
+        if share and (not share.expires_at or share.expires_at > now()):
+            creator = db.get(User, share.created_by)
+            if creator and creator.is_active:
+                return creator
     if creds:
         u = db.query(User).filter(User.username == creds.username).first()
         if u and u.is_active and verify_password(creds.password, u.hashed_password):

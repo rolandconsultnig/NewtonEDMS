@@ -1,6 +1,7 @@
 """Collaboration and governance routes: templates, comments, shares, retention, reports."""
 from __future__ import annotations
 
+import hashlib
 import json
 import secrets
 import shutil
@@ -8,7 +9,7 @@ from datetime import timedelta
 from html import escape
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import func, or_
@@ -280,6 +281,133 @@ def _load_valid_share(db: Session, token: str, password: str | None) -> ShareLin
     return s
 
 
+@router.options("/shares/{token}")
+def options_share(token: str, request: Request):
+    """OPTIONS method for Microsoft Office desktop protocol and WebDAV discovery."""
+    return Response(
+        headers={
+            "Allow": "OPTIONS, GET, HEAD, PUT, POST, PROPFIND, LOCK, UNLOCK",
+            "DAV": "1, 2",
+            "MS-Author-Via": "DAV",
+            "Accept-Ranges": "bytes",
+        }
+    )
+
+
+@router.head("/shares/{token}")
+def head_share(token: str, request: Request, db: Session = Depends(get_db)):
+    """HEAD method for Office protocol handshake."""
+    s = _load_valid_share(db, token)
+    d = db.get(Document, s.document_id)
+    if not d:
+        raise HTTPException(status_code=404, detail="Document not found")
+    path = Path(d.file_path) if d.file_path else None
+    size = path.stat().st_size if path and path.exists() else (d.size or 0)
+    return Response(
+        headers={
+            "Content-Type": d.mime or "application/octet-stream",
+            "Content-Length": str(size),
+            "Content-Disposition": f'inline; filename="{d.name}"',
+            "MS-Author-Via": "DAV",
+            "Accept-Ranges": "bytes",
+            "DAV": "1, 2",
+        }
+    )
+
+
+@router.api_route("/shares/{token}", methods=["PROPFIND", "LOCK", "UNLOCK"])
+async def dav_share_control(token: str, request: Request, db: Session = Depends(get_db)):
+    """Handle WebDAV metadata and lock control requests from Microsoft Office."""
+    s = _load_valid_share(db, token)
+    d = db.get(Document, s.document_id)
+    if not d:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    method = request.method.upper()
+    if method == "LOCK":
+        lock_token = f"opaquelocktoken:{token}"
+        xml_res = f"""<?xml version="1.0" encoding="utf-8" ?>
+<D:prop xmlns:D="DAV:">
+  <D:lockdiscovery>
+    <D:activelock>
+      <D:locktype><D:write/></D:locktype>
+      <D:lockscope><D:exclusive/></D:lockscope>
+      <D:depth>0</D:depth>
+      <D:owner><D:href>urn:newtonedms:office</D:href></D:owner>
+      <D:timeout>Second-3600</D:timeout>
+      <D:locktoken><D:href>{lock_token}</D:href></D:locktoken>
+      <D:lockroot><D:href>/api/shares/{token}</D:href></D:lockroot>
+    </D:activelock>
+  </D:lockdiscovery>
+</D:prop>"""
+        return Response(content=xml_res, media_type="application/xml; charset=utf-8", headers={"Lock-Token": f"<{lock_token}>"})
+    elif method == "UNLOCK":
+        return Response(status_code=204)
+    else:  # PROPFIND
+        path = Path(d.file_path) if d.file_path else None
+        size = path.stat().st_size if path and path.exists() else (d.size or 0)
+        xml_res = f"""<?xml version="1.0" encoding="utf-8" ?>
+<D:multistatus xmlns:D="DAV:">
+  <D:response>
+    <D:href>/api/shares/{token}</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:displayname>{escape(d.name)}</D:displayname>
+        <D:getcontentlength>{size}</D:getcontentlength>
+        <D:getcontenttype>{d.mime or 'application/octet-stream'}</D:getcontenttype>
+        <D:resourcetype/>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+</D:multistatus>"""
+        return Response(content=xml_res, status_code=207, media_type="application/xml; charset=utf-8")
+
+
+@router.put("/shares/{token}")
+async def put_share(
+    token: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """PUT method allowing Microsoft Office to save edited documents directly back into the repository."""
+    s = _load_valid_share(db, token)
+    if s.kind not in ("edit", "all"):
+        raise HTTPException(status_code=403, detail="Share link does not permit editing")
+    d = db.get(Document, s.document_id)
+    if not d or not d.file_path:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    path = Path(d.file_path)
+    body_data = await request.body()
+    if not body_data:
+        raise HTTPException(status_code=400, detail="No content provided")
+    
+    # Save previous version
+    prev_ver_num = d.current_version or 1
+    target_dir = path.parent
+    ver_dest = target_dir / f"version_{prev_ver_num}{path.suffix}"
+    if path.exists() and not ver_dest.exists():
+        shutil.copy2(path, ver_dest)
+        db.add(DocumentVersion(
+            document_id=d.id,
+            version_number=prev_ver_num,
+            file_path=str(ver_dest),
+            size=path.stat().st_size,
+            created_by=s.created_by,
+            notes="Auto-archived before Office desktop edit",
+        ))
+    
+    path.write_bytes(body_data)
+    d.size = len(body_data)
+    d.content_hash = hashlib.sha256(body_data).hexdigest()
+    d.current_version = prev_ver_num + 1
+    d.updated_at = now()
+    db.commit()
+    audit(db, s.created_by, "OFFICE_SAVE", "document", d.id, f"Direct desktop Office save via share token {s.token[:8]}")
+    return {"status": "ok", "version": d.current_version, "size": d.size}
+
+
 @router.get("/shares/{token}")
 @limiter.limit(lambda: settings.share_rate_limit)
 def use_share(
@@ -295,17 +423,21 @@ def use_share(
     path = Path(d.file_path)
     if not path.exists():
         raise HTTPException(status_code=404, detail="File not found")
+    
+    response_headers = {
+        "MS-Author-Via": "DAV",
+        "Accept-Ranges": "bytes",
+    }
+    
     if s.kind in ("view", "comment"):
-        # Read-only share: stream inline for preview, never as an attachment,
-        # and don't consume the download counter (views are not downloads).
         audit(db, None, "SHARE_VIEW", "document", d.id, f"Share {s.id}")
         return FileResponse(
             path,
             filename=d.name,
             media_type=d.mime,
             content_disposition_type="inline",
+            headers=response_headers,
         )
-    # Atomically claim one download; concurrent requests cannot exceed the cap.
     claimed = (
         db.query(ShareLink)
         .filter(
@@ -325,7 +457,7 @@ def use_share(
         raise HTTPException(status_code=410, detail="Download limit reached")
     db.commit()
     audit(db, None, "SHARE_DOWNLOAD", "document", d.id, f"Share {s.id}")
-    return FileResponse(path, filename=d.name, media_type=d.mime)
+    return FileResponse(path, filename=d.name, media_type=d.mime, headers=response_headers)
 
 
 @router.get("/documents/{doc_id}/shares", response_model=list[ShareLinkOut])

@@ -152,7 +152,7 @@
     try {
       ctx = JSON.parse($("tmpl-context").value || "{}");
     } catch (e) {
-      alert("Invalid JSON data for template context");
+      toast("Invalid JSON data for template context", "error");
       return;
     }
     try {
@@ -164,7 +164,7 @@
       toast(`Document generated: ${res.name || "Success"}`);
       if (typeof loadFolderDocs === "function") loadFolderDocs(currentFolderId);
     } catch (e) {
-      alert(`Template merge error: ${e.message}`);
+      toast(`Template merge error: ${e.message}`, "error");
     }
   };
 
@@ -258,7 +258,7 @@
       });
       toast("Office properties saved into document file!");
     } catch (e) {
-      alert(`Save error: ${e.message}`);
+      toast(`Save error: ${e.message}`, "error");
     }
   };
 
