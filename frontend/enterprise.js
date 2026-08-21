@@ -1,4 +1,58 @@
 /* NewtonEDMS enterprise UI: workflow canvas, rules, compliance, RAG, connectors, ProcessMaker studio. */
+
+function showModal(html) {
+  let modal = document.getElementById("enterprise-dynamic-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "enterprise-dynamic-modal";
+    modal.className = "modal";
+    modal.style.position = "fixed";
+    modal.style.inset = "0";
+    modal.style.zIndex = "9999";
+    modal.style.background = "rgba(15, 23, 42, 0.65)";
+    modal.style.backdropFilter = "blur(4px)";
+    modal.style.alignItems = "center";
+    modal.style.justifyContent = "center";
+    modal.style.overflowY = "auto";
+    modal.style.padding = "20px";
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closeModal();
+    });
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = html;
+  const card = modal.firstElementChild;
+  if (card) {
+    card.classList.add("bg-white", "dark:bg-slate-900", "border", "border-slate-200", "dark:border-slate-800", "rounded-xl", "shadow-2xl", "overflow-hidden", "w-full");
+    card.style.maxHeight = "90vh";
+    card.style.overflowY = "auto";
+  }
+  modal.classList.add("open");
+  modal.style.display = "flex";
+}
+
+const _origCloseModal = typeof closeModal === "function" ? closeModal : null;
+closeModal = function (id) {
+  if (id && id !== "enterprise-dynamic-modal") {
+    if (_origCloseModal) _origCloseModal(id);
+    const el = document.getElementById(id);
+    if (el) {
+      el.classList.remove("open");
+      el.style.display = "none";
+    }
+  } else {
+    const dynamicModal = document.getElementById("enterprise-dynamic-modal");
+    if (dynamicModal) {
+      dynamicModal.classList.remove("open");
+      dynamicModal.style.display = "none";
+      dynamicModal.innerHTML = "";
+    }
+  }
+};
+
+window.showModal = showModal;
+window.closeModal = closeModal;
+
 const ENT_TABS = new Set([
   "rules", "forms", "zones", "holds", "cases", "bpmn", "rag", "connectors",
   "cluster", "compliance", "security-policy", "report-builder", "office", "workflows", "legal", "accounting", "insurance", "medical",

@@ -71,6 +71,27 @@ def list_workflows(
     return db.query(WorkflowTemplate).order_by(WorkflowTemplate.name).all()
 
 
+@router.get("/workflows/queue", response_model=list[TaskOut])
+def get_workflow_queue(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Fetch all pending tasks in the current user's approval queue (direct or role-assigned)."""
+    q = (
+        db.query(Task, WorkflowInstance.document_id, User.username)
+        .join(WorkflowInstance, Task.instance_id == WorkflowInstance.id)
+        .outerjoin(User, Task.assignee_id == User.id)
+        .filter(Task.status == "pending")
+    )
+    if user.role not in ("superadmin", "admin"):
+        q = q.filter((Task.assignee_id == user.id) | (Task.assignee_role == user.role))
+    
+    results = []
+    for t, doc_id, username in q.order_by(Task.due_at.asc().nullslast(), Task.created_at.asc()).all():
+        results.append(_format_task_out(t, doc_id, username))
+    return results
+
+
 @router.get("/workflows/{workflow_id}", response_model=WorkflowTemplateOut)
 def get_workflow(
     workflow_id: int,
@@ -218,25 +239,6 @@ def get_instance_timeline(
     return logs
 
 
-@router.get("/workflows/queue", response_model=list[TaskOut])
-def get_workflow_queue(
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Fetch all pending tasks in the current user's approval queue (direct or role-assigned)."""
-    q = (
-        db.query(Task, WorkflowInstance.document_id, User.username)
-        .join(WorkflowInstance, Task.instance_id == WorkflowInstance.id)
-        .outerjoin(User, Task.assignee_id == User.id)
-        .filter(Task.status == "pending")
-    )
-    if user.role not in ("superadmin", "admin"):
-        q = q.filter((Task.assignee_id == user.id) | (Task.assignee_role == user.role))
-    
-    results = []
-    for t, doc_id, username in q.order_by(Task.due_at.asc().nullslast(), Task.created_at.asc()).all():
-        results.append(_format_task_out(t, doc_id, username))
-    return results
 
 
 @router.get("/tasks", response_model=list[TaskOut])
