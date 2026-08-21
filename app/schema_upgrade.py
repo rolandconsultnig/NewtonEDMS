@@ -28,21 +28,21 @@ _NEW_COLUMNS: dict[str, dict[str, str]] = {
         "locale": "VARCHAR DEFAULT 'en'",
         "density": "VARCHAR DEFAULT 'standard'",
         "quota_bytes": "INTEGER DEFAULT 0",
-        "last_login_at": "DATETIME",
+        "last_login_at": "TIMESTAMP",
         "working_hours": "JSON",
         "ldap_dn": "VARCHAR",
         "ui_settings": "JSON",
         "oidc_sub": "VARCHAR",
-        "password_changed_at": "DATETIME",
+        "password_changed_at": "TIMESTAMP",
         "failed_logins": "INTEGER DEFAULT 0",
-        "locked_until": "DATETIME",
+        "locked_until": "TIMESTAMP",
     },
     "folders": {
         "kind": "VARCHAR DEFAULT 'folder'",
         "color": "VARCHAR",
         "quota_bytes": "INTEGER DEFAULT 0",
         "max_children": "INTEGER DEFAULT 0",
-        "deleted_at": "DATETIME",
+        "deleted_at": "TIMESTAMP",
         "deleted_by": "INTEGER",
         "alias_of_id": "INTEGER",
         "template_id": "INTEGER",
@@ -67,8 +67,8 @@ _NEW_COLUMNS: dict[str, dict[str, str]] = {
         "content_hash": "VARCHAR",
         "correspondent_id": "INTEGER",
         "concerning_id": "INTEGER",
-        "due_date": "DATETIME",
-        "item_date": "DATETIME",
+        "due_date": "TIMESTAMP",
+        "item_date": "TIMESTAMP",
         "source": "VARCHAR DEFAULT 'upload'",
         "language": "VARCHAR",
         "notes": "TEXT",
@@ -80,7 +80,7 @@ _NEW_COLUMNS: dict[str, dict[str, str]] = {
         "custom_id": "VARCHAR",
         "extracted_text": "TEXT",
         "duplicate_of": "INTEGER",
-        "deleted_at": "DATETIME",
+        "deleted_at": "TIMESTAMP",
         "deleted_by": "INTEGER",
         "locked_by": "INTEGER",
         "immutable": "BOOLEAN DEFAULT FALSE",
@@ -92,7 +92,7 @@ _NEW_COLUMNS: dict[str, dict[str, str]] = {
         "alias_of_id": "INTEGER",
         "signed": "BOOLEAN DEFAULT FALSE",
         "confirmed": "BOOLEAN DEFAULT FALSE",
-        "confirmed_at": "DATETIME",
+        "confirmed_at": "TIMESTAMP",
         "organization_id": "INTEGER",
         "equipment_id": "INTEGER",
         "source_id": "INTEGER",
@@ -140,7 +140,7 @@ _NEW_COLUMNS: dict[str, dict[str, str]] = {
         "sla_hours": "INTEGER",
         "escalated": "BOOLEAN DEFAULT FALSE",
         "escalated_to_id": "INTEGER",
-        "escalated_at": "DATETIME",
+        "escalated_at": "TIMESTAMP",
     },
     "import_folders": {
         "protocol": "VARCHAR DEFAULT 'local'",
@@ -192,6 +192,7 @@ def ensure_columns(engine) -> list[str]:
     insp = inspect(engine)
     tables = set(insp.get_table_names())
     applied: list[str] = []
+    is_postgres = engine.dialect.name == "postgresql"
     with engine.begin() as conn:
         for table, cols in _NEW_COLUMNS.items():
             if table not in tables:
@@ -200,7 +201,10 @@ def ensure_columns(engine) -> list[str]:
             for name, ddl in cols.items():
                 if name in have:
                     continue
-                stmt = f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"
+                col_ddl = ddl
+                if is_postgres:
+                    col_ddl = col_ddl.replace("DATETIME", "TIMESTAMP")
+                stmt = f"ALTER TABLE {table} ADD COLUMN {name} {col_ddl}"
                 conn.execute(text(stmt))
                 applied.append(stmt)
                 logger.info("schema upgrade: %s", stmt)
