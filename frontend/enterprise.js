@@ -1,7 +1,7 @@
-/* NewtonEDMS enterprise UI: workflow canvas, rules, compliance, RAG, connectors. */
+/* NewtonEDMS enterprise UI: workflow canvas, rules, compliance, RAG, connectors, ProcessMaker studio. */
 const ENT_TABS = new Set([
   "rules", "forms", "zones", "holds", "cases", "bpmn", "rag", "connectors",
-  "cluster", "compliance", "security-policy", "report-builder", "office",
+  "cluster", "compliance", "security-policy", "report-builder", "office", "workflows",
 ]);
 
 const _entAdmin = typeof adminTab === "function" ? adminTab : null;
@@ -19,6 +19,11 @@ inspTab = async function (tab) {
   if (tab === "pdfops" && currentDocId) {
     markInspTab(tab);
     await renderPdfOps($("insp-body"));
+    return;
+  }
+  if (tab === "workflow" && currentDocId) {
+    markInspTab(tab);
+    await renderWorkflowTimelineTab($("insp-body"));
     return;
   }
   if (_entInsp) return _entInsp(tab);
@@ -202,6 +207,113 @@ async function renderEntTab(tab) {
             2. In desktop Microsoft Word or Excel, navigate to <strong>Insert > Add-ins > My Add-ins > Shared Folder</strong>.<br>
             3. Point Office to your manifest folder or deploy globally via the <strong>Microsoft 365 Admin Center</strong>.
           </div>
+        </div>
+      </div>
+    `;
+  } else if (tab === "workflows") {
+    const [wfs, queue] = await Promise.all([
+      apiFetch("/workflows"),
+      apiFetch("/workflows/queue").catch(() => []),
+    ]);
+    content.innerHTML = `
+      <div style="padding:4px">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h3 class="font-bold text-base"><i class="fa-solid fa-diagram-project text-blue-600"></i> ProcessMaker Workflow Studio</h3>
+            <p class="text-xs text-slate-500">Sequential & Parallel Routing, BPMN Gateways, Dynamic Metadata Forms, SLA Auto-Escalation, and Immutable Audit Trails.</p>
+          </div>
+          <button class="tb primary text-xs" onclick="openCreateWfDrawer()"><i class="fa-solid fa-plus"></i> New Process</button>
+        </div>
+
+        ${queue && queue.length ? `
+          <div class="border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-slate-900 rounded-lg p-3 mb-4">
+            <h4 class="font-bold text-xs text-amber-800 dark:text-amber-400 mb-2"><i class="fa-solid fa-clock-rotate-left"></i> My Pending Approval Queue (${queue.length})</h4>
+            <div class="space-y-2">
+              ${queue.map((t) => `
+                <div class="flex items-center justify-between bg-white dark:bg-slate-800 p-2 rounded border border-slate-200 dark:border-slate-700 text-xs">
+                  <div>
+                    <span class="font-bold text-blue-600">${esc(t.step_name)}</span> on Document <a href="#" onclick="openDoc(${t.document_id});return false;" class="underline font-mono">#${t.document_id}</a>
+                    <span class="ml-2 text-slate-500">SLA: ${t.sla_hours || 24}h ${t.escalated ? '<span class="text-red-500 font-bold">[ESCALATED]</span>' : ''}</span>
+                  </div>
+                  <button class="tb primary text-xs" onclick="openWorkflowSignOffModal(${t.id},'${esc(t.step_name)}',${esc(JSON.stringify(t.form_schema || []))})"><i class="fa-solid fa-signature"></i> Review & Sign</button>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        ` : ''}
+
+        <div id="wf-create-drawer" class="border rounded-lg p-4 bg-slate-50 dark:bg-slate-800 mb-4 hidden">
+          <h4 class="font-bold text-sm mb-2">Create Business Process</h4>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label class="block text-xs font-semibold mb-1">Process Name</label>
+              <input id="pm-wf-name" placeholder="e.g. Purchase Order Approval" class="w-full border p-1.5 rounded text-xs bg-white dark:bg-slate-900" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold mb-1">Routing Mode</label>
+              <select id="pm-wf-routing" class="w-full border p-1.5 rounded text-xs bg-white dark:bg-slate-900">
+                <option value="sequential">Sequential (One after another)</option>
+                <option value="parallel_all">Parallel (All reviewers must approve)</option>
+                <option value="parallel_any">Parallel (First to approve wins)</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-3 mb-3">
+            <div>
+              <label class="block text-xs font-semibold mb-1">Auto-Approval Rule (Optional)</label>
+              <input id="pm-wf-auto" placeholder="e.g. amount < 1000" class="w-full border p-1.5 rounded text-xs bg-white dark:bg-slate-900" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold mb-1">SLA Deadline (Hours)</label>
+              <input id="pm-wf-sla" type="number" value="24" class="w-full border p-1.5 rounded text-xs bg-white dark:bg-slate-900" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold mb-1">Auto-Escalation Role</label>
+              <select id="pm-wf-esc" class="w-full border p-1.5 rounded text-xs bg-white dark:bg-slate-900">
+                <option value="manager">Manager</option>
+                <option value="finance">Finance Director</option>
+                <option value="compliance">Compliance Officer</option>
+                <option value="legal">Legal Counsel</option>
+                <option value="executive">Executive</option>
+                <option value="admin">Administrator</option>
+              </select>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="block text-xs font-semibold mb-1">Approval Steps (JSON or Drag Designer)</label>
+            <textarea id="pm-wf-steps" rows="3" class="w-full border p-1.5 rounded text-xs font-mono bg-white dark:bg-slate-900" placeholder='[{"name":"Manager Review","assignee_role":"manager","form_schema":[{"name":"po_tax_id","label":"Tax ID"}]}]'>[{"name":"Manager Review","assignee_role":"manager","due_days":2},{"name":"Executive Approval","assignee_role":"executive","due_days":3}]</textarea>
+          </div>
+          <div class="flex gap-2 justify-end">
+            <button class="tb text-xs" onclick="closeCreateWfDrawer()">Cancel</button>
+            <button class="tb primary text-xs" onclick="saveProcessMakerWorkflow()"><i class="fa-solid fa-save"></i> Save Process</button>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          ${(wfs || []).map((w) => `
+            <div class="border rounded-lg p-3 bg-white dark:bg-slate-800 shadow-sm">
+              <div class="flex items-center justify-between mb-2">
+                <div>
+                  <strong class="text-sm font-semibold text-slate-800 dark:text-slate-100">${esc(w.name)}</strong>
+                  <span class="ml-2 px-2 py-0.5 text-xs rounded-full bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 font-mono">${esc(w.routing_type || "sequential")}</span>
+                  ${w.auto_approval_rule ? `<span class="ml-1 px-2 py-0.5 text-xs rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200">Auto: ${esc(w.auto_approval_rule)}</span>` : ''}
+                </div>
+                <div class="flex gap-2">
+                  <button class="tb text-xs" onclick="showWfDesigner(${w.id})"><i class="fa-solid fa-pen-ruler"></i> BPMN Studio</button>
+                  <button class="tb text-xs text-red-600" onclick="delWorkflowTpl(${w.id})"><i class="fa-solid fa-trash"></i></button>
+                </div>
+              </div>
+              <p class="text-xs text-slate-500 mb-2">${esc(w.description || "No description")} · SLA: ${w.sla_hours || 24}h · Escalates to: ${esc(w.escalate_to_role || "manager")}</p>
+              <div class="flex gap-2 text-xs flex-wrap">
+                ${(w.steps || []).map((s, i) => `
+                  <span class="border rounded px-2 py-1 bg-slate-50 dark:bg-slate-900">
+                    <strong>${i + 1}. ${esc(s.name || s)}</strong> (${esc(s.assignee_role || "User " + (s.assignee_id || ""))})
+                  </span>
+                `).join("<span class='text-slate-400 self-center'>→</span>")}
+              </div>
+              <div id="wf-des-${w.id}" class="mt-3"></div>
+            </div>
+          `).join("") || '<div class="text-xs text-slate-400 p-4 text-center">No workflow processes defined yet. Click "New Process" to create one.</div>'}
         </div>
       </div>
     `;
@@ -545,4 +657,202 @@ async function saveWfCanvas(id) {
   }));
   await apiFetch(`/workflows/${id}/graph`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ graph, steps }) });
   toast("Workflow graph saved successfully", "success");
+}
+
+function openCreateWfDrawer() {
+  const el = $("wf-create-drawer");
+  if (el) el.classList.remove("hidden");
+}
+
+function closeCreateWfDrawer() {
+  const el = $("wf-create-drawer");
+  if (el) el.classList.add("hidden");
+}
+
+async function saveProcessMakerWorkflow() {
+  const name = val("pm-wf-name").trim();
+  if (!name) {
+    toast("Process name is required", "error");
+    return;
+  }
+  const routing_type = val("pm-wf-routing") || "sequential";
+  const auto_approval_rule = val("pm-wf-auto").trim() || null;
+  const sla_hours = parseInt(val("pm-wf-sla"), 10) || 24;
+  const escalate_to_role = val("pm-wf-esc") || "manager";
+  let steps = [];
+  try {
+    steps = JSON.parse(val("pm-wf-steps") || "[]");
+  } catch (e) {
+    toast("Invalid JSON for workflow steps", "error");
+    return;
+  }
+
+  try {
+    await apiFetch("/workflows", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        routing_type,
+        auto_approval_rule,
+        sla_hours,
+        escalate_to_role,
+        steps,
+      }),
+    });
+    toast("ProcessMaker Workflow created successfully!", "success");
+    closeCreateWfDrawer();
+    adminTab("workflows");
+  } catch (e) {
+    toast(`Failed to create process: ${e.message}`, "error");
+  }
+}
+
+window.openWorkflowSignOffModal = function (taskId, stepName, formSchema) {
+  let schema = formSchema;
+  if (typeof schema === "string") {
+    try { schema = JSON.parse(schema); } catch (e) { schema = []; }
+  }
+  schema = schema || [];
+
+  let modal = $("wf-signoff-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "wf-signoff-modal";
+    modal.className = "modal";
+    document.body.appendChild(modal);
+  }
+
+  modal.innerHTML = `
+    <div style="max-width:540px;background:var(--bg-panel, #fff);padding:20px;border-radius:8px;box-shadow:0 10px 25px rgba(0,0,0,0.3)">
+      <h3 class="font-bold text-base mb-1"><i class="fa-solid fa-signature text-blue-600"></i> Review &amp; Sign: ${esc(stepName)}</h3>
+      <p class="text-xs text-slate-500 mb-3">Please fill required approval metadata and sign off on this document.</p>
+
+      <form id="wf-signoff-form" onsubmit="return false;">
+        ${schema.map((f) => `
+          <div class="mb-2">
+            <label class="block text-xs font-semibold mb-1">${esc(f.label || f.name)} ${f.required ? '<span class="text-red-500">*</span>' : ''}</label>
+            <input name="${esc(f.name)}" type="${f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}"
+              placeholder="${esc(f.placeholder || '')}" class="w-full border p-1.5 rounded text-xs" ${f.required ? 'required' : ''} />
+          </div>
+        `).join("")}
+
+        <div class="mb-2">
+          <label class="block text-xs font-semibold mb-1">Review Comments</label>
+          <textarea id="wf-sign-comment" rows="2" class="w-full border p-1.5 rounded text-xs" placeholder="Add decision remarks…"></textarea>
+        </div>
+
+        <div class="mb-3">
+          <label class="block text-xs font-semibold mb-1">Digital Signature / Token</label>
+          <input id="wf-sign-token" class="w-full border p-1.5 rounded text-xs font-mono" placeholder="Type your full name or crypt-token e.g. SIG-DOE-2026" />
+        </div>
+
+        <div class="flex items-center justify-between pt-2 border-t mt-3">
+          <button type="button" class="tb text-xs text-slate-600" onclick="closeModal('wf-signoff-modal')">Cancel</button>
+          <div class="flex gap-2">
+            <button type="button" class="tb text-xs text-red-600 border-red-300 hover:bg-red-50" onclick="submitWorkflowSignOff(${taskId}, 'reject')"><i class="fa-solid fa-xmark"></i> Reject</button>
+            <button type="button" class="tb primary text-xs" onclick="submitWorkflowSignOff(${taskId}, 'approve')"><i class="fa-solid fa-check"></i> Approve &amp; Advance</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  `;
+
+  openModal("wf-signoff-modal");
+};
+
+window.submitWorkflowSignOff = async function (taskId, action) {
+  const form = $("wf-signoff-form");
+  const formData = {};
+  if (form) {
+    const inputs = form.querySelectorAll("input[name]");
+    for (const inp of inputs) {
+      if (inp.required && !inp.value.trim() && action === "approve") {
+        toast(`Field "${inp.name}" is required`, "error");
+        inp.focus();
+        return;
+      }
+      if (inp.value) formData[inp.name] = inp.value;
+    }
+  }
+
+  const comment = val("wf-sign-comment");
+  const signature = val("wf-sign-token");
+
+  try {
+    await apiFetch(`/tasks/${taskId}/action`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action,
+        approved: action === "approve",
+        comment,
+        form_data: formData,
+        signature: signature || undefined,
+      }),
+    });
+
+    closeModal("wf-signoff-modal");
+    toast(`Task ${action === "approve" ? "Approved" : "Rejected"} successfully!`, "success");
+    if (typeof refreshCurrentList === "function") refreshCurrentList();
+    if (currentDocId && typeof openDoc === "function") openDoc(currentDocId);
+    adminTab("workflows");
+  } catch (e) {
+    toast(`Action failed: ${e.message}`, "error");
+  }
+};
+
+async function renderWorkflowTimelineTab(container) {
+  if (!currentDocId) return;
+  container.innerHTML = `<div class="p-3 text-xs text-slate-400"><i class="fa-solid fa-spinner fa-spin"></i> Loading workflow timeline…</div>`;
+  try {
+    const instances = await apiFetch("/workflow-instances");
+    const inst = (instances || []).find((i) => i.document_id === currentDocId);
+    if (!inst) {
+      container.innerHTML = `
+        <div class="p-4 text-center text-xs text-slate-500">
+          <i class="fa-solid fa-diagram-project text-2xl text-slate-300 mb-2 block"></i>
+          No workflow active on this document.<br>
+          <button class="tb primary text-xs mt-3" onclick="openStartWfModal()"><i class="fa-solid fa-play"></i> Start Approval Workflow</button>
+        </div>
+      `;
+      return;
+    }
+
+    const logs = await apiFetch(`/workflows/instances/${inst.id}/timeline`).catch(() => []);
+    container.innerHTML = `
+      <div class="p-3 text-xs">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <strong class="text-sm font-semibold">Approval Lifecycle</strong>
+            <span class="ml-2 px-2 py-0.5 rounded-full text-xs font-mono ${inst.status === 'completed' ? 'bg-emerald-100 text-emerald-800' : inst.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}">${esc(inst.status.toUpperCase())}</span>
+          </div>
+          <span class="text-slate-400">Instance #${inst.id}</span>
+        </div>
+
+        <div class="relative pl-6 space-y-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200 dark:before:bg-slate-700">
+          ${logs.map((l) => `
+            <div class="relative">
+              <div class="absolute -left-6 top-0.5 w-3.5 h-3.5 rounded-full ${l.action === 'APPROVE' || l.action === 'AUTO_APPROVE' ? 'bg-emerald-500' : l.action === 'REJECT' ? 'bg-red-500' : l.action === 'ESCALATE' ? 'bg-amber-500' : 'bg-blue-500'} border-2 border-white dark:border-slate-800"></div>
+              <div class="bg-slate-50 dark:bg-slate-800 p-2.5 rounded border border-slate-200 dark:border-slate-700">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="font-bold text-slate-800 dark:text-slate-200">${esc(l.action)} ${l.to_state ? '→ ' + esc(l.to_state) : ''}</span>
+                  <span class="text-slate-400 text-2xs">${esc(l.created_at || '')}</span>
+                </div>
+                <div class="text-slate-600 dark:text-slate-300 mb-1">By <strong>${esc(l.actor_name || "User")}</strong>: ${esc(l.comment || "No comment")}</div>
+                ${l.signature ? `<div class="text-2xs font-mono text-emerald-600"><i class="fa-solid fa-lock"></i> Digital Signature: ${esc(l.signature)}</div>` : ''}
+                ${l.form_data && Object.keys(l.form_data).length ? `
+                  <div class="mt-1.5 pt-1.5 border-t border-slate-200 dark:border-slate-700 text-2xs text-slate-500">
+                    <strong>Captured Metadata:</strong> ${Object.entries(l.form_data).map(([k, v]) => `${esc(k)}: <em>${esc(String(v))}</em>`).join(" · ")}
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          `).join("") || '<div class="text-slate-400">No events logged yet.</div>'}
+        </div>
+      </div>
+    `;
+  } catch (e) {
+    container.innerHTML = `<div class="p-3 text-xs text-red-500">Failed to load timeline: ${e.message}</div>`;
+  }
 }

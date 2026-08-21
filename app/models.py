@@ -335,8 +335,13 @@ class WorkflowTemplate(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     description = Column(String)
+    routing_type = Column(String, default="sequential")  # sequential, parallel_all, parallel_any, bpmn
     steps = Column(JSON, default=list)
     graph = Column(JSON, default=dict)
+    form_schema = Column(JSON, default=list)  # dynamic form fields schema
+    sla_hours = Column(Integer, default=24)
+    escalate_to_role = Column(String, default="manager")
+    auto_approval_rule = Column(String, nullable=True)  # condition expr for instant auto-approval
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=now)
 
@@ -346,10 +351,12 @@ class WorkflowInstance(Base):
     id = Column(Integer, primary_key=True, index=True)
     template_id = Column(Integer, ForeignKey("workflow_templates.id"), nullable=False)
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
-    status = Column(String, default="running")  # running, completed, rejected, cancelled
+    status = Column(String, default="running")  # running, completed, rejected, cancelled, escalated
     current_step = Column(Integer, default=0)
     current_node = Column(String)
     tokens = Column(JSON, default=list)
+    context = Column(JSON, default=dict)
+    variables = Column(JSON, default=dict)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=now)
     completed_at = Column(DateTime)
@@ -362,11 +369,38 @@ class Task(Base):
     step_index = Column(Integer, nullable=False)
     step_name = Column(String, nullable=False)
     node_id = Column(String)
+    routing_type = Column(String, default="sequential")
     assignee_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    status = Column(String, default="pending")  # pending, approved, rejected, skipped
+    assignee_role = Column(String, nullable=True)
+    status = Column(String, default="pending")  # pending, approved, rejected, skipped, escalated
+    action_taken = Column(String, nullable=True)
     comment = Column(String)
+    form_data = Column(JSON, default=dict)
+    form_schema = Column(JSON, default=list)
+    signature = Column(String, nullable=True)
+    sla_hours = Column(Integer, nullable=True)
+    escalated = Column(Boolean, default=False)
+    escalated_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    escalated_at = Column(DateTime, nullable=True)
     due_at = Column(DateTime)
     completed_at = Column(DateTime)
+    created_at = Column(DateTime, default=now)
+
+
+class WorkflowTransitionLog(Base):
+    __tablename__ = "workflow_transition_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    instance_id = Column(Integer, ForeignKey("workflow_instances.id"), nullable=False)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    task_id = Column(Integer, nullable=True)
+    from_state = Column(String)
+    to_state = Column(String)
+    action = Column(String, nullable=False)  # SUBMIT, APPROVE, REJECT, ESCALATE, AUTO_APPROVE, REASSIGN, DELEGATE
+    actor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    actor_name = Column(String)
+    comment = Column(String)
+    form_data = Column(JSON, default=dict)
+    signature = Column(String, nullable=True)
     created_at = Column(DateTime, default=now)
 
 

@@ -1,14 +1,23 @@
-"""Workflow, tasks and notifications routes."""
+"""Workflow, tasks, BPMN engine and ProcessMaker approval routes."""
 from __future__ import annotations
 
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.audit import audit
 from app.database import get_db, now
-from app.models import Document, Folder, Notification, Task, User, WorkflowInstance, WorkflowTemplate
+from app.models import (
+    Document,
+    Folder,
+    Notification,
+    Task,
+    User,
+    WorkflowInstance,
+    WorkflowTemplate,
+    WorkflowTransitionLog,
+)
 from app.permissions import has_permission
 from app.schemas import (
     NotificationOut,
@@ -18,160 +27,23 @@ from app.schemas import (
     WorkflowStep,
     WorkflowTemplateCreate,
     WorkflowTemplateOut,
+    WorkflowTransitionLogOut,
 )
 from app.security import get_current_user, require_role
+from app.workflow_engine import advance_task, check_and_escalate_slas, start_workflow as start_workflow_engine
 
 router = APIRouter(prefix="/api", tags=["workflow"])
 
-VALID_ROLES = {"superadmin", "admin", "manager", "user"}
-
-
-def _resolve_assignee(db: Session, step: WorkflowStep) -> User | None:
-    """Find the assignee for a step by explicit id or by role."""
-    if step.assignee_id:
-        return db.get(User, step.assignee_id)
-    if step.assignee_role and step.assignee_role in VALID_ROLES:
-        return db.query(User).filter(User.role == step.assignee_role).first()
-    return None
+VALID_ROLES = {"superadmin", "admin", "manager", "user", "compliance", "finance", "legal", "executive"}
 
 
 def _validated_steps(raw_steps) -> list[WorkflowStep]:
-    """Validate freeform template steps against the WorkflowStep schema."""
+    """Validate template steps against the WorkflowStep schema."""
     steps = [WorkflowStep.model_validate(s) for s in (raw_steps or [])]
     for step in steps:
         if not step.name or not step.name.strip():
             raise HTTPException(status_code=400, detail="Every workflow step needs a name")
-        if not step.assignee_id and not step.assignee_role:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Step '{step.name}' has no assignee (assignee_id or assignee_role)",
-            )
     return steps
-
-
-def _create_task(db: Session, instance: WorkflowInstance, step_index: int, step: WorkflowStep, node_id: str | None = None):
-    assignee = _resolve_assignee(db, step)
-    due = now() + timedelta(days=step.due_days) if step.due_days else None
-    t = Task(
-        instance_id=instance.id,
-        step_index=step_index,
-        step_name=step.name,
-        assignee_id=assignee.id if assignee else None,
-        due_at=due,
-        node_id=node_id,
-    )
-    db.add(t)
-    db.flush()
-    if assignee:
-        db.add(
-            Notification(
-                user_id=assignee.id,
-                message=f"New workflow task on document {instance.document_id}: {t.step_name}",
-            )
-        )
-    return t
-
-
-def _graph_definition(template: WorkflowTemplate):
-    from app.bpmn import from_graph_json
-
-    graph = template.graph or {}
-    if not (graph.get("nodes") or graph.get("edges")):
-        return None
-    return from_graph_json(graph, template.steps)
-
-
-def _run_service_task(db: Session, doc: Document, node) -> None:
-    action = (node.action or "").lower()
-    if action == "watermark":
-        from pathlib import Path
-        from app.pdfops import watermark
-        from app.storage import doc_storage_dir
-
-        src = Path(doc.pdf_file_path or doc.file_path)
-        if src.exists():
-            dest = doc_storage_dir(doc.id) / "watermarked.pdf"
-            watermark(src, dest, "WORKFLOW")
-            doc.pdf_file_path = str(dest)
-    elif action == "archive":
-        doc.status = "archived"
-    elif action == "approve":
-        doc.status = "approved"
-
-
-def _close_bpmn_case(db: Session, template: WorkflowTemplate | None) -> None:
-    """When a BPMN-backed workflow finishes, close matching cases."""
-    if not template or not (template.name or "").startswith("bpmn:"):
-        return
-    try:
-        bpmn_id = int(template.name.split(":", 1)[1])
-    except (TypeError, ValueError):
-        return
-    from app.models import Case
-
-    for case in db.query(Case).filter(Case.bpmn_id == bpmn_id, Case.status != "closed").all():
-        case.status = "closed"
-        case.closed_at = now()
-
-
-def _advance_graph(db: Session, inst: WorkflowInstance, template: WorkflowTemplate, from_node: str, context: dict, approved: bool = True) -> None:
-    from app.bpmn import next_nodes
-
-    d = db.get(Document, inst.document_id)
-    definition = _graph_definition(template)
-    if not definition:
-        return
-    if not approved:
-        inst.status = "rejected"
-        inst.completed_at = now()
-        if d:
-            d.status = "draft"
-            d.updated_at = now()
-            db.add(Notification(user_id=inst.created_by, message=f"Workflow rejected for document {d.id}"))
-        return
-    queue = list(next_nodes(definition, from_node, context))
-    seen: set[str] = set()
-    pending = []
-    while queue:
-        nid = queue.pop(0)
-        if nid in seen:
-            continue
-        seen.add(nid)
-        node = definition.nodes.get(nid)
-        if not node or node.type in ("end", "endEvent"):
-            continue
-        if node.type in ("start", "startEvent", "exclusiveGateway", "parallelGateway"):
-            queue.extend(next_nodes(definition, nid, context))
-            continue
-        if node.type == "serviceTask":
-            if d:
-                _run_service_task(db, d, node)
-            queue.extend(next_nodes(definition, nid, context))
-            continue
-        pending.append(node)
-    if not pending:
-        inst.status = "completed"
-        inst.completed_at = now()
-        if d:
-            d.status = "approved"
-            d.updated_at = now()
-            db.add(Notification(user_id=inst.created_by, message=f"Workflow completed for document {d.id}"))
-        _close_bpmn_case(db, template)
-        return
-    inst.current_node = pending[0].id
-    inst.tokens = [n.id for n in pending]
-    for node in pending:
-        step = WorkflowStep(
-            name=node.name,
-            assignee_role=node.assignee_role,
-            assignee_id=node.assignee_id,
-            due_days=node.due_days,
-        )
-        inst.current_step = (inst.current_step or 0) + 1
-        _create_task(db, inst, inst.current_step, step, node_id=node.id)
-    if d:
-        d.status = "review"
-        d.updated_at = now()
 
 
 def start_workflow_internal(db: Session, doc_id: int, template_id: int, created_by: int) -> WorkflowInstance:
@@ -186,36 +58,7 @@ def start_workflow_internal(db: Session, doc_id: int, template_id: int, created_
         .first()
     ):
         raise ValueError("A workflow is already running on this document")
-    definition = _graph_definition(w)
-    inst = WorkflowInstance(
-        template_id=w.id,
-        document_id=doc_id,
-        status="running",
-        current_step=0,
-        created_by=created_by,
-    )
-    db.add(inst)
-    db.flush()
-    if definition and definition.start:
-        inst.current_node = definition.start
-        context = {"status": d.status, "tags": d.tags or "", "approved": "true"}
-        _advance_graph(db, inst, w, definition.start, context, approved=True)
-    else:
-        try:
-            steps = _validated_steps(w.steps)
-        except HTTPException as exc:
-            raise ValueError(exc.detail) from exc
-        if not steps:
-            raise ValueError("Workflow has no steps")
-        if not _resolve_assignee(db, steps[0]):
-            raise ValueError(f"Step '{steps[0].name}' has no assignable user")
-        _create_task(db, inst, 0, steps[0])
-        if d.status == "draft":
-            d.status = "review"
-            d.updated_at = now()
-    db.commit()
-    db.refresh(inst)
-    return inst
+    return start_workflow_engine(db, template_id, doc_id, created_by)
 
 
 @router.get("/workflows", response_model=list[WorkflowTemplateOut])
@@ -224,6 +67,18 @@ def list_workflows(
     user: User = Depends(get_current_user),
 ):
     return db.query(WorkflowTemplate).order_by(WorkflowTemplate.name).all()
+
+
+@router.get("/workflows/{workflow_id}", response_model=WorkflowTemplateOut)
+def get_workflow(
+    workflow_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    w = db.get(WorkflowTemplate, workflow_id)
+    if not w:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    return w
 
 
 @router.post("/workflows", response_model=WorkflowTemplateOut)
@@ -236,13 +91,51 @@ def create_workflow(
     w = WorkflowTemplate(
         name=payload.name,
         description=payload.description,
+        routing_type=payload.routing_type or "sequential",
         steps=[s.model_dump() for s in steps],
+        graph=payload.graph or {},
+        form_schema=payload.form_schema or [],
+        sla_hours=payload.sla_hours or 24,
+        escalate_to_role=payload.escalate_to_role or "manager",
+        auto_approval_rule=payload.auto_approval_rule,
         created_by=user.id,
+        created_at=now(),
     )
     db.add(w)
     db.commit()
     db.refresh(w)
     audit(db, user, "WORKFLOW_CREATE", "workflow_template", w.id, w.name)
+    return w
+
+
+@router.put("/workflows/{workflow_id}", response_model=WorkflowTemplateOut)
+def update_workflow(
+    workflow_id: int,
+    payload: WorkflowTemplateCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("superadmin", "admin", "manager")),
+):
+    w = db.get(WorkflowTemplate, workflow_id)
+    if not w:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    steps = _validated_steps(payload.steps)
+    w.name = payload.name
+    w.description = payload.description
+    w.routing_type = payload.routing_type or w.routing_type or "sequential"
+    w.steps = [s.model_dump() for s in steps]
+    if payload.graph:
+        w.graph = payload.graph
+    if payload.form_schema is not None:
+        w.form_schema = payload.form_schema
+    if payload.sla_hours:
+        w.sla_hours = payload.sla_hours
+    if payload.escalate_to_role:
+        w.escalate_to_role = payload.escalate_to_role
+    if payload.auto_approval_rule is not None:
+        w.auto_approval_rule = payload.auto_approval_rule
+    db.commit()
+    db.refresh(w)
+    audit(db, user, "WORKFLOW_UPDATE", "workflow_template", w.id, w.name)
     return w
 
 
@@ -255,10 +148,9 @@ def delete_workflow(
     w = db.get(WorkflowTemplate, workflow_id)
     if not w:
         raise HTTPException(status_code=404, detail="Workflow not found")
-    # FK enforcement would turn this into a 500 once the template has been used.
     if db.query(WorkflowInstance).filter(WorkflowInstance.template_id == workflow_id).first():
         raise HTTPException(
-            status_code=409, detail="Workflow has been used; deactivate it instead"
+            status_code=409, detail="Workflow has active or historical instances; cannot delete"
         )
     db.delete(w)
     db.commit()
@@ -267,9 +159,10 @@ def delete_workflow(
 
 
 @router.post("/documents/{doc_id}/workflows", response_model=WorkflowInstanceOut)
-def start_workflow(
+def start_document_workflow(
     doc_id: int,
     template_id: int,
+    variables: dict | None = Body(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -278,16 +171,20 @@ def start_workflow(
         raise HTTPException(status_code=404, detail="Document not found")
     f = db.get(Folder, d.folder_id)
     if not has_permission(db, user, "write", f, d):
-        raise HTTPException(status_code=403, detail="No permission")
+        raise HTTPException(status_code=403, detail="No permission to start workflow on this document")
     w = db.get(WorkflowTemplate, template_id)
     if not w:
         raise HTTPException(status_code=404, detail="Workflow template not found")
+    
+    # Check running instance
+    if db.query(WorkflowInstance).filter(WorkflowInstance.document_id == doc_id, WorkflowInstance.status == "running").first():
+        raise HTTPException(status_code=409, detail="A workflow is already running on this document")
+
     try:
-        inst = start_workflow_internal(db, doc_id, template_id, created_by=user.id)
+        inst = start_workflow_engine(db, template_id, doc_id, user.id, variables)
     except ValueError as exc:
-        msg = str(exc)
-        code = 409 if "already running" in msg else 400
-        raise HTTPException(status_code=code, detail=msg) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     audit(db, user, "WORKFLOW_START", "workflow_instance", inst.id, f"Template {w.id} on document {doc_id}")
     return inst
 
@@ -298,9 +195,46 @@ def list_instances(
     user: User = Depends(get_current_user),
 ):
     q = db.query(WorkflowInstance)
-    if user.role not in ("superadmin", "admin"):
+    if user.role not in ("superadmin", "admin", "manager"):
         q = q.filter(WorkflowInstance.created_by == user.id)
     return q.order_by(WorkflowInstance.created_at.desc()).all()
+
+
+@router.get("/workflows/instances/{instance_id}/timeline", response_model=list[WorkflowTransitionLogOut])
+def get_instance_timeline(
+    instance_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Retrieve immutable approval chain & event logs for a workflow instance."""
+    inst = db.get(WorkflowInstance, instance_id)
+    if not inst:
+        raise HTTPException(status_code=404, detail="Workflow instance not found")
+    logs = db.query(WorkflowTransitionLog).filter(
+        WorkflowTransitionLog.instance_id == instance_id
+    ).order_by(WorkflowTransitionLog.created_at.asc()).all()
+    return logs
+
+
+@router.get("/workflows/queue", response_model=list[TaskOut])
+def get_workflow_queue(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Fetch all pending tasks in the current user's approval queue (direct or role-assigned)."""
+    q = (
+        db.query(Task, WorkflowInstance.document_id, User.username)
+        .join(WorkflowInstance, Task.instance_id == WorkflowInstance.id)
+        .outerjoin(User, Task.assignee_id == User.id)
+        .filter(Task.status == "pending")
+    )
+    if user.role not in ("superadmin", "admin"):
+        q = q.filter((Task.assignee_id == user.id) | (Task.assignee_role == user.role))
+    
+    results = []
+    for t, doc_id, username in q.order_by(Task.due_at.asc().nullslast(), Task.created_at.asc()).all():
+        results.append(_format_task_out(t, doc_id, username))
+    return results
 
 
 @router.get("/tasks", response_model=list[TaskOut])
@@ -315,26 +249,12 @@ def list_tasks(
         .outerjoin(User, Task.assignee_id == User.id)
     )
     if user.role not in ("superadmin", "admin"):
-        q = q.filter(Task.assignee_id == user.id)
+        q = q.filter((Task.assignee_id == user.id) | (Task.assignee_role == user.role))
     if status:
         q = q.filter(Task.status == status)
     result = []
     for t, doc_id, username in q.order_by(Task.created_at.desc()).all():
-        result.append({
-            "id": t.id,
-            "instance_id": t.instance_id,
-            "step_index": t.step_index,
-            "step_name": t.step_name,
-            "assignee_id": t.assignee_id,
-            "assignee_username": username,
-            "document_id": doc_id,
-            "status": t.status,
-            "comment": t.comment,
-            "node_id": t.node_id,
-            "due_at": t.due_at,
-            "completed_at": t.completed_at,
-            "created_at": t.created_at,
-        })
+        result.append(_format_task_out(t, doc_id, username))
     return result
 
 
@@ -349,89 +269,72 @@ def task_action(
     if not t:
         raise HTTPException(status_code=404, detail="Task not found")
     inst = db.get(WorkflowInstance, t.instance_id)
-    # Unassigned tasks (e.g. role with no users) can be acted on by the
-    # instance creator or admins so the workflow cannot deadlock.
-    may_act = t.assignee_id == user.id or user.role in ("superadmin", "admin") or (
-        t.assignee_id is None and inst and inst.created_by == user.id
+    if not inst:
+        raise HTTPException(status_code=404, detail="Instance not found")
+
+    may_act = (
+        t.assignee_id == user.id
+        or t.assignee_role == user.role
+        or user.role in ("superadmin", "admin")
+        or (t.assignee_id is None and inst.created_by == user.id)
     )
     if not may_act:
         raise HTTPException(status_code=403, detail="Not assigned to you")
     if t.status != "pending":
         raise HTTPException(status_code=400, detail="Task already resolved")
 
-    d = db.get(Document, inst.document_id)
-    # The actor must still be able to read the document being approved.
-    f = db.get(Folder, d.folder_id)
-    if not has_permission(db, user, "read", f, d):
-        raise HTTPException(status_code=403, detail="No permission")
-
-    # Atomically claim the pending task so two concurrent actions cannot both
-    # advance the workflow (double-increment / skipped steps).
-    claimed = (
-        db.query(Task)
-        .filter(Task.id == task_id, Task.status == "pending")
-        .update(
-            {
-                Task.status: "approved" if payload.approved else "rejected",
-                Task.completed_at: now(),
-            },
-            synchronize_session=False,
+    act = payload.action or ("approve" if payload.approved else "reject")
+    try:
+        res = advance_task(
+            db=db,
+            task_id=task_id,
+            action=act,
+            user_id=user.id,
+            comment=payload.comment or "",
+            form_data=payload.form_data or {},
+            signature=payload.signature,
+            reassign_to_id=payload.reassign_to_id,
         )
-    )
-    if not claimed:
-        db.rollback()
-        raise HTTPException(status_code=400, detail="Task already resolved")
-    db.refresh(t)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    tpl = db.get(WorkflowTemplate, inst.template_id)
-    definition = _graph_definition(tpl) if tpl else None
-    steps = []
-    if not definition:
-        steps = _validated_steps(tpl.steps if tpl else [])
-
-    t.comment = payload.comment or ""
-    if definition and (t.node_id or inst.current_node):
-        context = {
-            "status": d.status,
-            "tags": d.tags or "",
-            "approved": "true" if payload.approved else "false",
-            "decision": "approved" if payload.approved else "rejected",
-        }
-        _advance_graph(db, inst, tpl, t.node_id or inst.current_node, context, approved=payload.approved)
-    elif payload.approved:
-        inst.current_step += 1
-        if inst.current_step >= len(steps):
-            inst.status = "completed"
-            inst.completed_at = now()
-            d.status = "approved"
-            d.updated_at = now()
-            db.add(Notification(user_id=inst.created_by, message=f"Workflow completed for document {d.id}"))
-            _close_bpmn_case(db, tpl)
-        else:
-            _create_task(db, inst, inst.current_step, steps[inst.current_step])
-            d.status = "review"
-            d.updated_at = now()
-    else:
-        inst.status = "rejected"
-        inst.completed_at = now()
-        d.status = "draft"
-        d.updated_at = now()
-        db.add(Notification(user_id=inst.created_by, message=f"Workflow rejected for document {d.id}"))
-
-    db.commit()
     db.refresh(t)
     assignee = db.get(User, t.assignee_id)
     audit(db, user, "WORKFLOW_ACTION", "task", t.id, f"{t.status} step {t.step_name}")
+    return _format_task_out(t, inst.document_id, assignee.username if assignee else None)
+
+
+@router.post("/workflows/check-slas")
+def trigger_sla_escalation(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("superadmin", "admin")),
+):
+    """Scan and execute SLA auto-escalation on overdue workflow tasks."""
+    escalated = check_and_escalate_slas(db)
+    return {"ok": True, "escalated_count": len(escalated), "details": escalated}
+
+
+def _format_task_out(t: Task, doc_id: int | None, username: str | None) -> dict:
     return {
         "id": t.id,
         "instance_id": t.instance_id,
         "step_index": t.step_index,
         "step_name": t.step_name,
+        "routing_type": t.routing_type or "sequential",
         "assignee_id": t.assignee_id,
-        "assignee_username": assignee.username if assignee else None,
-        "document_id": d.id,
+        "assignee_role": t.assignee_role,
+        "assignee_username": username,
+        "document_id": doc_id,
         "status": t.status,
+        "action_taken": t.action_taken,
         "comment": t.comment,
+        "form_data": t.form_data,
+        "form_schema": t.form_schema,
+        "signature": t.signature,
+        "sla_hours": t.sla_hours,
+        "escalated": t.escalated,
+        "escalated_to_id": t.escalated_to_id,
+        "escalated_at": t.escalated_at,
         "node_id": t.node_id,
         "due_at": t.due_at,
         "completed_at": t.completed_at,

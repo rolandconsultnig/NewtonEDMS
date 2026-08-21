@@ -26,6 +26,7 @@ DEFAULTS = (
     ("Cluster heartbeat", "cluster", 1),
     ("IDP model train", "idp", 1440),
     ("Vector reindex", "vectors", 360),
+    ("Workflow SLA escalation", "workflow_sla", 15),
 )
 
 
@@ -140,6 +141,11 @@ def run_task(db, task: ScheduledTask) -> None:
                 index_vectors(db, d.id, d.title or "", d.extracted_text or "")
                 n += 1
             task.last_message = f"embedded {n}"
+        elif task.kind == "workflow_sla":
+            from app.workflow_engine import check_and_escalate_slas
+
+            esc = check_and_escalate_slas(db)
+            task.last_message = f"escalated {len(esc)} overdue tasks"
         elif task.kind == "notify":
             from app.models import Notification, NotificationRule
             from app.querylang import apply_filters, parse_query

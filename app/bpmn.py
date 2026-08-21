@@ -144,23 +144,89 @@ def from_graph_json(graph: dict, steps: list | None = None) -> ProcessDef:
 
 
 def eval_condition(expr: str | None, context: dict[str, Any]) -> bool:
-    if not expr:
+    """Evaluate a ProcessMaker/BPMN conditional expression against execution context.
+    
+    Supports:
+    - Comparisons: <, <=, >, >=, ==, !=
+    - Membership: 'contains', 'in', 'startswith', 'endswith'
+    - Compound logic: 'and', 'or'
+    - Nested variables: doc.amount, metadata.vendor, tags, etc.
+    """
+    if not expr or not expr.strip():
         return True
+    
     expr = expr.strip()
-    if "==" in expr:
-        left, right = [p.strip().strip("'\"") for p in expr.split("==", 1)]
-        return str(context.get(left, context.get(left.lower(), ""))) == right
-    if "!=" in expr:
-        left, right = [p.strip().strip("'\"") for p in expr.split("!=", 1)]
-        return str(context.get(left, "")) != right
-    if "=" in expr:
-        left, right = [p.strip().strip("'\"") for p in expr.split("=", 1)]
-        return str(context.get(left, context.get(left.lower(), ""))) == right
-    if expr.lower() in ("true", "1", "yes"):
-        return True
-    if expr.lower() in ("false", "0", "no"):
-        return False
-    return str(context.get(expr, "")) not in ("", "None", "false", "0")
+    
+    # Handle compound AND / OR
+    if " and " in expr.lower():
+        parts = [p.strip() for p in expr.split(" and ")]
+        return all(eval_condition(p, context) for p in parts)
+    if " or " in expr.lower():
+        parts = [p.strip() for p in expr.split(" or ")]
+        return any(eval_condition(p, context) for p in parts)
+
+    def _resolve_val(token: str) -> Any:
+        token = token.strip()
+        # String literal with quotes
+        if (token.startswith('"') and token.endswith('"')) or (token.startswith("'") and token.endswith("'")):
+            return token[1:-1]
+        # Number
+        try:
+            if "." in token:
+                return float(token)
+            return int(token)
+        except ValueError:
+            pass
+        # Boolean
+        if token.lower() in ("true", "yes"):
+            return True
+        if token.lower() in ("false", "no"):
+            return False
+        # Context variable resolution
+        if isinstance(context, dict) and (token in context or token.lower() in context):
+            return context.get(token, context.get(token.lower()))
+        # Nested dotted lookup (e.g. doc.amount, metadata.department)
+        if "." in token:
+            cur = context
+            for p in token.split("."):
+                if isinstance(cur, dict):
+                    cur = cur.get(p, cur.get(p.lower()))
+                else:
+                    cur = getattr(cur, p, None)
+                if cur is None:
+                    break
+            if cur is not None:
+                return cur
+        # Fallback to unquoted string literal (e.g. 'rejected', 'approved')
+        return token
+
+    # Operators with ordering (>= before >, <= before <, == before =)
+    ops = [
+        (">=", lambda a, b: float(a or 0) >= float(b or 0)),
+        ("<=", lambda a, b: float(a or 0) <= float(b or 0)),
+        ("!=", lambda a, b: str(a or "").lower() != str(b or "").lower()),
+        ("==", lambda a, b: str(a or "").lower() == str(b or "").lower()),
+        (">", lambda a, b: float(a or 0) > float(b or 0)),
+        ("<", lambda a, b: float(a or 0) < float(b or 0)),
+        ("=", lambda a, b: str(a or "").lower() == str(b or "").lower()),
+        (" contains ", lambda a, b: str(b or "").lower() in str(a or "").lower()),
+        (" in ", lambda a, b: str(a or "").lower() in str(b or "").lower()),
+        (" startswith ", lambda a, b: str(a or "").lower().startswith(str(b or "").lower())),
+    ]
+
+    for op_sym, op_fn in ops:
+        if op_sym in expr:
+            left_str, right_str = expr.split(op_sym, 1)
+            left_val = _resolve_val(left_str)
+            right_val = _resolve_val(right_str)
+            try:
+                return bool(op_fn(left_val, right_val))
+            except Exception:
+                return False
+
+    # Single variable truthiness check
+    val = _resolve_val(expr)
+    return bool(val and val not in ("0", "false", "None", 0, False))
 
 
 def next_nodes(definition: ProcessDef, current: str, context: dict[str, Any]) -> list[str]:

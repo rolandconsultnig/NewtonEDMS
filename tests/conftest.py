@@ -84,5 +84,19 @@ def root_folder_id(client) -> int:
         db.close()
 
 
+@pytest.fixture()
+def db_session(client):
+    db = db_mod.SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@pytest.fixture()
+def admin_user(db_session):
+    return db_session.query(models.User).filter(models.User.username == "admin").first()
+
+
 def _auth(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}

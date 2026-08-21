@@ -311,8 +311,12 @@ class WorkflowStep(BaseModel):
     name: str
     assignee_role: str | None = None
     assignee_id: int | None = None
+    assignee_ids: list[int] | None = []
     due_days: int | None = None
+    sla_hours: int | None = None
     action: str | None = "approve"
+    form_schema: list | None = []
+    condition_expr: str | None = None
 
 
 class WorkflowTemplateOut(BaseModel):
@@ -321,8 +325,13 @@ class WorkflowTemplateOut(BaseModel):
     id: int
     name: str
     description: str | None
+    routing_type: str | None = "sequential"
     steps: list | None
     graph: dict | None = None
+    form_schema: list | None = None
+    sla_hours: int | None = 24
+    escalate_to_role: str | None = "manager"
+    auto_approval_rule: str | None = None
     created_by: int
     created_at: datetime | None
 
@@ -330,7 +339,13 @@ class WorkflowTemplateOut(BaseModel):
 class WorkflowTemplateCreate(BaseModel):
     name: str
     description: str | None = ""
+    routing_type: str | None = "sequential"
     steps: list | None = []
+    graph: dict | None = {}
+    form_schema: list | None = []
+    sla_hours: int | None = 24
+    escalate_to_role: str | None = "manager"
+    auto_approval_rule: str | None = None
 
 
 class WorkflowInstanceOut(BaseModel):
@@ -342,6 +357,7 @@ class WorkflowInstanceOut(BaseModel):
     status: str
     current_step: int
     current_node: str | None = None
+    context: dict | None = None
     created_by: int
     created_at: datetime | None
     completed_at: datetime | None
@@ -349,7 +365,11 @@ class WorkflowInstanceOut(BaseModel):
 
 class TaskAction(BaseModel):
     approved: bool = True
+    action: str | None = "approve"  # 'approve', 'reject', 'reassign', 'delegate'
     comment: str | None = ""
+    form_data: dict | None = {}
+    signature: str | None = None
+    reassign_to_id: int | None = None
 
 
 class TaskOut(BaseModel):
@@ -359,15 +379,43 @@ class TaskOut(BaseModel):
     instance_id: int
     step_index: int
     step_name: str
+    routing_type: str | None = "sequential"
     assignee_id: int | None
+    assignee_role: str | None = None
     assignee_username: str | None
     document_id: int | None
     status: str
+    action_taken: str | None = None
     comment: str | None
+    form_data: dict | None = None
+    form_schema: list | None = None
+    signature: str | None = None
+    sla_hours: int | None = None
+    escalated: bool | None = False
+    escalated_to_id: int | None = None
+    escalated_at: datetime | None = None
     node_id: str | None = None
     due_at: datetime | None
     completed_at: datetime | None
     created_at: datetime | None
+
+
+class WorkflowTransitionLogOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    instance_id: int
+    document_id: int
+    task_id: int | None = None
+    from_state: str | None = None
+    to_state: str | None = None
+    action: str
+    actor_id: int | None = None
+    actor_name: str | None = None
+    comment: str | None = None
+    form_data: dict | None = None
+    signature: str | None = None
+    created_at: datetime | None = None
 
 
 class NotificationOut(BaseModel):
