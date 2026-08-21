@@ -27,6 +27,7 @@ from app.routers import (
     folders,
     groups,
     ingestion,
+    insurance,
     legal,
     newton,
     office,
@@ -163,6 +164,7 @@ app.include_router(wopi.router)
 app.include_router(office.router)
 app.include_router(legal.router)
 app.include_router(accounting.router)
+app.include_router(insurance.router)
 app.include_router(newton.router)
 app.include_router(newton.open_router)
 app.include_router(audit_router.router)

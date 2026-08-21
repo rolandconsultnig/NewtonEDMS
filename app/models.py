@@ -1215,3 +1215,98 @@ class AuditorPortal(Base):
     last_accessed_at = Column(DateTime)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=now)
+
+
+# =============================================================================
+# INSURANCE & CLAIMS MANAGEMENT EDMS MODELS
+# =============================================================================
+
+
+class InsurancePolicy(Base):
+    """Master Insurance Policy with endorsement and rider hierarchy."""
+
+    __tablename__ = "insurance_policies"
+    id = Column(Integer, primary_key=True, index=True)
+    policy_number = Column(String, unique=True, index=True, nullable=False)
+    insured_name = Column(String, index=True, nullable=False)
+    policy_type = Column(String, index=True, nullable=False)  # auto, property, commercial, life, health, casualty
+    effective_date = Column(DateTime, default=now)
+    expiration_date = Column(DateTime, nullable=True)
+    premium = Column(Float, default=0.0)
+    deductible = Column(Float, default=0.0)
+    coverage_limit = Column(Float, default=0.0)
+    status = Column(String, default="active")  # active, endorsement, lapsed, cancelled, expired
+    master_policy_id = Column(Integer, ForeignKey("insurance_policies.id"), nullable=True)  # Parent policy for endorsements
+    metadata_json = Column("metadata", JSON, default=dict)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class InsuranceClaim(Base):
+    """Insurance Claim lifecycle tracking (FNOL, investigation, settlement)."""
+
+    __tablename__ = "insurance_claims"
+    id = Column(Integer, primary_key=True, index=True)
+    claim_number = Column(String, unique=True, index=True, nullable=False)  # e.g. CLM-2026-0001
+    policy_id = Column(Integer, ForeignKey("insurance_policies.id"), nullable=False, index=True)
+    claimant_name = Column(String, index=True, nullable=False)
+    loss_date = Column(DateTime, default=now)
+    loss_type = Column(String, index=True, nullable=False)  # collision, theft, water_damage, fire, bodily_injury, storm, liability
+    loss_location = Column(String)
+    estimated_loss = Column(Float, default=0.0)
+    settlement_amount = Column(Float, default=0.0)
+    assigned_adjuster_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    status = Column(String, default="fnol_submitted")  # fnol_submitted, under_review, assessing, approved, settled, denied, subrogation
+    auto_approved = Column(Boolean, default=False)
+    fraud_score = Column(Integer, default=0)  # 0 to 100
+    fraud_flags = Column(JSON, default=list)  # List of suspicious flags
+    notes = Column(Text)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class ClaimEvidence(Base):
+    """Multi-format evidence (dashcam video, photos, audio, drone scans, reports)."""
+
+    __tablename__ = "claim_evidences"
+    id = Column(Integer, primary_key=True, index=True)
+    claim_id = Column(Integer, ForeignKey("insurance_claims.id"), nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False, index=True)
+    evidence_type = Column(String, nullable=False)  # scene_photo, dashcam_video, audio_statement, drone_footage, police_report, repair_estimate, medical_bill
+    exif_metadata = Column(JSON, default=dict)  # GPS, capture date, camera model, software
+    image_hash = Column(String, index=True)  # Perceptual / SHA-256 hash for duplicate check
+    is_fraud_flagged = Column(Boolean, default=False)
+    notes = Column(Text)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class ClaimPortalShare(Base):
+    """Encrypted upload & review portal for policyholders, adjusters, and repair shops."""
+
+    __tablename__ = "claim_portal_shares"
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, unique=True, index=True, nullable=False)
+    claim_id = Column(Integer, ForeignKey("insurance_claims.id"), nullable=False, index=True)
+    recipient_email = Column(String, nullable=False)
+    recipient_name = Column(String)
+    recipient_role = Column(String, default="policyholder")  # policyholder, independent_adjuster, repair_shop, medical_provider
+    password_hash = Column(String)
+    expires_at = Column(DateTime, nullable=True)
+    access_count = Column(Integer, default=0)
+    last_accessed_at = Column(DateTime)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class InsuranceTemplate(Base):
+    """Master templates for binder letters, settlement explanations, and policy schedules."""
+
+    __tablename__ = "insurance_templates"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    template_type = Column(String, nullable=False)  # binder_letter, policy_schedule, settlement_explanation, fnol_ack, denial_notice
+    content = Column(Text, nullable=False)
+    variables_schema = Column(JSON, default=dict)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)

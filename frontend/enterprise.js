@@ -1,7 +1,7 @@
 /* NewtonEDMS enterprise UI: workflow canvas, rules, compliance, RAG, connectors, ProcessMaker studio. */
 const ENT_TABS = new Set([
   "rules", "forms", "zones", "holds", "cases", "bpmn", "rag", "connectors",
-  "cluster", "compliance", "security-policy", "report-builder", "office", "workflows", "legal", "accounting",
+  "cluster", "compliance", "security-policy", "report-builder", "office", "workflows", "legal", "accounting", "insurance",
 ]);
 
 const _entAdmin = typeof adminTab === "function" ? adminTab : null;
@@ -321,6 +321,8 @@ async function renderEntTab(tab) {
     await renderLegalTab(content);
   } else if (tab === "accounting") {
     await renderAccountingTab(content);
+  } else if (tab === "insurance") {
+    await renderInsuranceTab(content);
   }
 }
 
@@ -2497,5 +2499,594 @@ async function submitERPSync(invoiceId) {
     adminTab("accounting");
   } catch (e) {
     toast(`ERP sync failed: ${e.message}`, "error");
+  }
+}
+
+/* =============================================================================
+   INSURANCE & CLAIMS EDMS UI (FNOL, Multi-Format Evidence, IDP, Fraud, Portals)
+   ============================================================================= */
+
+async function renderInsuranceTab(content) {
+  content.innerHTML = `<div class="p-4 text-xs text-slate-400"><i class="fa-solid fa-spinner fa-spin"></i> Loading Insurance & Claims Center…</div>`;
+  try {
+    const claims = (await apiFetch("/insurance/claims")) || [];
+    const policies = (await apiFetch("/insurance/policies")) || [];
+
+    const autoApprovedCount = claims.filter((c) => c.auto_approved).length;
+    const fraudAlertsCount = claims.filter((c) => (c.fraud_score || 0) >= 30).length;
+    const underReviewCount = claims.filter((c) => c.status === "under_review").length;
+
+    content.innerHTML = `
+      <div style="padding:4px">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div>
+            <h3 class="font-bold text-base mb-0.5"><i class="fa-solid fa-car-burst text-rose-600"></i> Insurance Claims &amp; Policy EDMS Hub</h3>
+            <p class="text-xs text-slate-500">First Notice of Loss (FNOL) ingestion, automated adjudication, multi-format crash evidence, IDP parsing, and EXIF fraud detection.</p>
+          </div>
+          <div class="flex gap-2 flex-wrap">
+            <button class="tb text-xs" onclick="openInsurancePolicyModal()"><i class="fa-solid fa-shield-halved text-blue-500"></i> Policy Portfolio</button>
+            <button class="tb text-xs" onclick="openInsuranceIDPModal()"><i class="fa-solid fa-wand-magic-sparkles text-amber-500"></i> IDP Extraction</button>
+            <button class="tb text-xs" onclick="openClaimPortalModal()"><i class="fa-solid fa-user-shield text-purple-500"></i> Adjuster Portals</button>
+            <button class="tb primary text-xs" onclick="openFNOLModal()"><i class="fa-solid fa-plus"></i> Intake FNOL Claim</button>
+          </div>
+        </div>
+
+        <!-- Metrics Cards -->
+        <div class="grid grid-cols-4 gap-3 mb-4">
+          <div class="border rounded-lg p-3 bg-slate-50 dark:bg-slate-800">
+            <div class="text-2xs uppercase text-slate-400 font-bold mb-1">Active Policies</div>
+            <div class="text-xl font-bold text-slate-800 dark:text-slate-100">${policies.length}</div>
+            <div class="text-2xs text-slate-500 mt-1">Master &amp; Endorsement Riders</div>
+          </div>
+          <div class="border rounded-lg p-3 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800">
+            <div class="text-2xs uppercase text-emerald-600 dark:text-emerald-400 font-bold mb-1">Auto-Approved Claims</div>
+            <div class="text-xl font-bold text-emerald-700 dark:text-emerald-300">${autoApprovedCount}</div>
+            <div class="text-2xs text-emerald-600 dark:text-emerald-400 mt-1">Instant STP (&lt;$1.5k threshold)</div>
+          </div>
+          <div class="border rounded-lg p-3 bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+            <div class="text-2xs uppercase text-blue-600 dark:text-blue-400 font-bold mb-1">Under Adjuster Review</div>
+            <div class="text-xl font-bold text-blue-700 dark:text-blue-300">${underReviewCount}</div>
+            <div class="text-2xs text-blue-600 dark:text-blue-400 mt-1">Specialized &amp; High Loss Queues</div>
+          </div>
+          <div class="border rounded-lg p-3 bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800">
+            <div class="text-2xs uppercase text-rose-600 dark:text-rose-400 font-bold mb-1">Fraud Risk Alerts</div>
+            <div class="text-xl font-bold text-rose-700 dark:text-rose-300">${fraudAlertsCount}</div>
+            <div class="text-2xs text-rose-600 dark:text-rose-400 mt-1">EXIF or Photo Hash flagged</div>
+          </div>
+        </div>
+
+        <!-- Claims Docket Table -->
+        <div class="border rounded-lg overflow-hidden bg-white dark:bg-slate-800 shadow-sm">
+          <div class="p-3 bg-slate-50 dark:bg-slate-800/80 border-b flex items-center justify-between flex-wrap gap-2">
+            <strong class="text-xs font-semibold">Claims Processing Docket &amp; Adjudication Register</strong>
+            <span class="text-2xs text-slate-400">Integrated with Guidewire / Duck Creek Policy APIs</span>
+          </div>
+
+          <table class="w-full text-xs text-left border-collapse">
+            <thead class="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold border-b">
+              <tr>
+                <th class="p-2.5">Claim #</th>
+                <th class="p-2.5">Claimant &amp; Insured</th>
+                <th class="p-2.5">Loss Type &amp; Date</th>
+                <th class="p-2.5">Estimated / Settlement</th>
+                <th class="p-2.5">Adjudication Status</th>
+                <th class="p-2.5">Fraud Score</th>
+                <th class="p-2.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
+              ${claims.map((c) => renderClaimRow(c)).join("") || `
+                <tr>
+                  <td colspan="7" class="p-8 text-center text-slate-400">
+                    <i class="fa-solid fa-shield-cat text-3xl mb-2 text-slate-300 block"></i>
+                    No claims submitted yet.<br>
+                    <button class="tb primary text-xs mt-3" onclick="openFNOLModal()"><i class="fa-solid fa-plus"></i> Intake First FNOL Claim</button>
+                  </td>
+                </tr>
+              `}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } catch (e) {
+    content.innerHTML = `<div class="p-4 text-xs text-red-500">Failed to load insurance suite: ${e.message}</div>`;
+  }
+}
+
+function renderClaimRow(c) {
+  const lossIcons = {
+    collision: "fa-car-crash text-rose-500",
+    theft: "fa-mask text-amber-500",
+    water_damage: "fa-water text-blue-500",
+    fire: "fa-fire text-orange-500",
+    bodily_injury: "fa-user-injured text-purple-500",
+    storm: "fa-cloud-bolt text-indigo-500",
+  };
+  const icon = lossIcons[c.loss_type] || "fa-triangle-exclamation text-slate-500";
+
+  let statusBadge = `<span class="px-2 py-0.5 rounded text-2xs font-semibold uppercase bg-slate-100 text-slate-700 border">${esc(c.status)}</span>`;
+  if (c.auto_approved) {
+    statusBadge = `<span class="px-2 py-0.5 rounded text-2xs font-bold uppercase bg-emerald-100 text-emerald-800 border border-emerald-300"><i class="fa-solid fa-bolt"></i> AUTO-APPROVED</span>`;
+  } else if (c.status === "approved" || c.status === "settled") {
+    statusBadge = `<span class="px-2 py-0.5 rounded text-2xs font-semibold uppercase bg-emerald-100 text-emerald-800 border border-emerald-300">${esc(c.status)}</span>`;
+  } else if (c.status === "under_review") {
+    statusBadge = `<span class="px-2 py-0.5 rounded text-2xs font-semibold uppercase bg-blue-100 text-blue-800 border border-blue-300">Under Review</span>`;
+  }
+
+  let fraudBadge = `<span class="px-1.5 py-0.5 rounded text-3xs font-semibold bg-slate-100 text-slate-500">0% Clean</span>`;
+  if (c.fraud_score >= 50) {
+    fraudBadge = `<span class="px-1.5 py-0.5 rounded text-3xs font-bold uppercase bg-rose-600 text-white animate-pulse"><i class="fa-solid fa-skull-crossbones"></i> ${c.fraud_score}% HIGH RISK</span>`;
+  } else if (c.fraud_score > 0) {
+    fraudBadge = `<span class="px-1.5 py-0.5 rounded text-3xs font-semibold bg-amber-100 text-amber-800">${c.fraud_score}% Risk</span>`;
+  }
+
+  return `
+    <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+      <td class="p-2.5 font-mono font-bold text-slate-800 dark:text-slate-200">
+        ${esc(c.claim_number)}
+      </td>
+      <td class="p-2.5">
+        <div class="font-semibold">${esc(c.claimant_name)}</div>
+        <div class="text-2xs text-slate-400">Policy ID #${c.policy_id}</div>
+      </td>
+      <td class="p-2.5">
+        <div class="flex items-center gap-1.5 font-medium">
+          <i class="fa-solid ${icon}"></i>
+          <span>${esc(c.loss_type.replace(/_/g, ' ').toUpperCase())}</span>
+        </div>
+        <div class="text-2xs text-slate-400 font-mono">${c.loss_date ? c.loss_date.slice(0, 10) : 'N/A'}</div>
+      </td>
+      <td class="p-2.5">
+        <div class="font-bold text-slate-900 dark:text-slate-100">Est: $${c.estimated_loss.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+        ${c.settlement_amount > 0 ? `<div class="text-2xs font-bold text-emerald-600 dark:text-emerald-400">Payout: $${c.settlement_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>` : ''}
+      </td>
+      <td class="p-2.5">
+        ${statusBadge}
+      </td>
+      <td class="p-2.5">
+        ${fraudBadge}
+      </td>
+      <td class="p-2.5 text-right space-x-1">
+        <button class="tb text-2xs" onclick="openClaimDetailWorkspace(${c.id})"><i class="fa-solid fa-folder-open text-blue-500"></i> Evidence &amp; Workspace</button>
+        <button class="tb text-2xs" onclick="downloadSettlementPDF(${c.id})"><i class="fa-solid fa-file-pdf text-rose-500"></i> Payout PDF</button>
+      </td>
+    </tr>
+  `;
+}
+
+/* =============================================================================
+   INSURANCE MODALS & WORKFLOWS
+   ============================================================================= */
+
+async function openFNOLModal() {
+  const policies = (await apiFetch("/insurance/policies")) || [];
+  showModal(`
+    <div class="p-4" style="max-width:650px">
+      <h3 class="font-bold text-base mb-2"><i class="fa-solid fa-file-shield text-rose-600"></i> First Notice of Loss (FNOL) Intake Wizard</h3>
+      <p class="text-xs text-slate-500 mb-3">Submit initial loss incident. Automated engine checks policy active status, deductible rules, and low-value STP auto-approval (&lt;$1,500).</p>
+
+      <div class="space-y-3 text-xs">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold mb-1">Claim Number *</label>
+            <input id="fnol-num" value="CLM-2026-${Math.floor(1000 + Math.random() * 9000)}" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-mono font-bold" />
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Select Active Policy *</label>
+            <select id="fnol-policy" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-semibold">
+              ${policies.map((p) => `<option value="${p.id}">${esc(p.policy_number)} - ${esc(p.insured_name)} (${esc(p.policy_type).toUpperCase()}, Deductible: $${p.deductible})</option>`).join("")}
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold mb-1">Claimant Name *</label>
+            <input id="fnol-claimant" placeholder="e.g. Alexander Vance" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Loss Type *</label>
+            <select id="fnol-type" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-semibold">
+              <option value="collision">Vehicle Collision / Accident</option>
+              <option value="storm">Wind &amp; Storm Damage (Property)</option>
+              <option value="water_damage">Water Damage / Plumbing Leak</option>
+              <option value="theft">Theft &amp; Burglary</option>
+              <option value="fire">Fire &amp; Smoke Damage</option>
+              <option value="bodily_injury">Bodily Injury / Medical Casualty</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold mb-1">Estimated Loss Amount ($) *</label>
+            <input id="fnol-amt" type="number" step="0.01" value="1200.00" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-bold text-rose-600" />
+            <span class="text-3xs text-slate-400 mt-0.5 block">&le; $1,500 with no injury triggers instant auto-approval.</span>
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Loss Location</label>
+            <input id="fnol-loc" placeholder="e.g. Intersection of 5th Ave &amp; Main St" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold mb-1">Incident Description &amp; Loss Details</label>
+          <textarea id="fnol-notes" rows="3" placeholder="Describe how the loss occurred, emergency services notified, witness statements…" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900"></textarea>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 mt-4">
+        <button class="tb text-xs" onclick="closeModal()">Cancel</button>
+        <button class="tb primary text-xs" onclick="submitFNOL()">Submit FNOL &amp; Adjudicate</button>
+      </div>
+    </div>
+  `);
+}
+
+async function submitFNOL() {
+  const claimNum = val("fnol-num");
+  const claimant = val("fnol-claimant");
+  const amt = parseFloat(val("fnol-amt") || "0.0");
+  const policyId = parseInt(val("fnol-policy"), 10);
+
+  if (!claimNum || !claimant || !policyId) {
+    toast("Claim number, claimant, and policy are required.", "error");
+    return;
+  }
+
+  try {
+    const res = await apiFetch("/insurance/claims", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        claim_number: claimNum,
+        policy_id: policyId,
+        claimant_name: claimant,
+        loss_type: val("fnol-type"),
+        loss_location: val("fnol-loc") || undefined,
+        estimated_loss: amt,
+        notes: val("fnol-notes") || undefined,
+      }),
+    });
+    closeModal();
+    if (res.auto_approved) {
+      toast(`Claim ${res.claim_number} AUTO-APPROVED! Net payout: $${res.settlement_amount.toFixed(2)}`, "success");
+    } else {
+      toast(`Claim ${res.claim_number} registered! Status: ${res.status.toUpperCase()}`, "success");
+    }
+    adminTab("insurance");
+  } catch (e) {
+    toast(`FNOL submission failed: ${e.message}`, "error");
+  }
+}
+
+async function openClaimDetailWorkspace(claimId) {
+  const claim = await apiFetch(`/insurance/claims/${claimId}`).catch(() => null);
+  const evidenceList = (await apiFetch(`/insurance/claims/${claimId}/evidence`).catch(() => [])) || [];
+  const folders = (await apiFetch("/folders")) || [];
+
+  if (!claim) {
+    toast("Failed to load claim details.", "error");
+    return;
+  }
+
+  showModal(`
+    <div class="p-4" style="max-width:850px">
+      <div class="flex items-center justify-between mb-3 border-b pb-2">
+        <div>
+          <h3 class="font-bold text-base"><i class="fa-solid fa-folder-open text-blue-600"></i> Claim File: ${esc(claim.claim_number)}</h3>
+          <span class="text-xs text-slate-500">Claimant: <strong>${esc(claim.claimant_name)}</strong> · Policy #${claim.policy_id}</span>
+        </div>
+        <div class="flex items-center gap-2">
+          ${claim.auto_approved ? '<span class="px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">AUTO-APPROVED</span>' : ''}
+          <button class="tb primary text-xs" onclick="downloadSettlementPDF(${claim.id})"><i class="fa-solid fa-file-pdf"></i> Settlement PDF</button>
+        </div>
+      </div>
+
+      <!-- Claim Summary Info -->
+      <div class="grid grid-cols-4 gap-3 mb-4 text-xs">
+        <div class="p-2.5 rounded border bg-slate-50 dark:bg-slate-900">
+          <span class="text-slate-400 block text-2xs uppercase font-bold">Loss Type</span>
+          <strong class="text-sm font-semibold">${esc(claim.loss_type.toUpperCase())}</strong>
+        </div>
+        <div class="p-2.5 rounded border bg-slate-50 dark:bg-slate-900">
+          <span class="text-slate-400 block text-2xs uppercase font-bold">Estimated Loss</span>
+          <strong class="text-sm font-semibold text-rose-600">$${claim.estimated_loss.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+        </div>
+        <div class="p-2.5 rounded border bg-slate-50 dark:bg-slate-900">
+          <span class="text-slate-400 block text-2xs uppercase font-bold">Approved Settlement</span>
+          <strong class="text-sm font-semibold text-emerald-600">$${claim.settlement_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+        </div>
+        <div class="p-2.5 rounded border bg-slate-50 dark:bg-slate-900">
+          <span class="text-slate-400 block text-2xs uppercase font-bold">Fraud Risk Score</span>
+          <strong class="text-sm font-semibold ${claim.fraud_score >= 50 ? 'text-rose-600' : 'text-slate-700'}">${claim.fraud_score}% Risk</strong>
+        </div>
+      </div>
+
+      ${claim.fraud_flags && claim.fraud_flags.length ? `
+        <div class="p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 rounded-lg mb-4 text-xs">
+          <strong class="text-rose-800 dark:text-rose-200 block mb-1"><i class="fa-solid fa-triangle-exclamation"></i> Fraud &amp; Alteration Flags Detected:</strong>
+          <ul class="list-disc pl-4 text-rose-700 dark:text-rose-300 space-y-0.5">
+            ${claim.fraud_flags.map((f) => `<li>${esc(f)}</li>`).join("")}
+          </ul>
+        </div>
+      ` : ''}
+
+      <!-- Evidence Upload Box -->
+      <div class="p-3 border rounded-lg bg-slate-50 dark:bg-slate-900 mb-4 text-xs">
+        <h4 class="font-bold mb-2"><i class="fa-solid fa-camera text-indigo-500"></i> Ingest Multi-Format Crash &amp; Loss Evidence (Photos, Dashcam Video, Audio, Estimates)</h4>
+        <div class="grid grid-cols-3 gap-2">
+          <div>
+            <label class="block text-2xs font-semibold mb-1">Evidence Type</label>
+            <select id="ev-type" class="w-full border p-1 rounded bg-white dark:bg-slate-800 text-2xs">
+              <option value="scene_photo">Scene / Crash Photo (Auto EXIF Check)</option>
+              <option value="dashcam_video">Dashcam Video Footage (MP4)</option>
+              <option value="audio_statement">Recorded Claimant Audio Statement</option>
+              <option value="drone_footage">Drone Survey Footage</option>
+              <option value="police_report">Police Traffic Crash Report</option>
+              <option value="repair_estimate">Auto Body Repair Estimate</option>
+              <option value="medical_bill">Hospital / Medical Bill</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-2xs font-semibold mb-1">Folder Destination</label>
+            <select id="ev-folder" class="w-full border p-1 rounded bg-white dark:bg-slate-800 text-2xs">
+              ${folders.map((f) => `<option value="${f.id}">${esc(f.name)}</option>`).join("")}
+            </select>
+          </div>
+          <div>
+            <label class="block text-2xs font-semibold mb-1">Select Evidence File</label>
+            <input type="file" id="ev-file" class="w-full border p-1 rounded bg-white dark:bg-slate-800 text-2xs" />
+          </div>
+        </div>
+        <div class="flex justify-end mt-2">
+          <button class="tb primary text-2xs" onclick="uploadEvidenceForClaim(${claim.id})"><i class="fa-solid fa-cloud-arrow-up"></i> Upload &amp; Run EXIF Fraud Check</button>
+        </div>
+      </div>
+
+      <!-- Evidence Gallery -->
+      <h4 class="font-bold text-xs mb-2"><i class="fa-solid fa-images text-slate-500"></i> Ingested Evidence Gallery (${evidenceList.length})</h4>
+      <div class="space-y-2 max-h-56 overflow-y-auto">
+        ${evidenceList.map((e) => `
+          <div class="p-2.5 border rounded-lg bg-white dark:bg-slate-800 flex items-center justify-between text-xs">
+            <div class="space-y-0.5">
+              <div class="font-semibold flex items-center gap-1.5">
+                <span class="px-1.5 py-0.5 rounded text-3xs font-bold uppercase bg-slate-100 dark:bg-slate-700">${esc(e.evidence_type.replace(/_/g, ' '))}</span>
+                <span>Document ID #${e.document_id}</span>
+                ${e.is_fraud_flagged ? '<span class="px-1.5 py-0.5 rounded text-3xs font-bold uppercase bg-rose-600 text-white animate-pulse">SUSPICIOUS EXIF</span>' : ''}
+              </div>
+              <div class="text-2xs text-slate-500">${esc(e.notes || 'No notes')} · Hash: <code class="text-3xs">${esc(e.image_hash ? e.image_hash.slice(0, 16) : 'N/A')}…</code></div>
+            </div>
+            <div class="text-right">
+              <span class="text-2xs text-slate-400 font-mono">${e.created_at ? e.created_at.slice(0, 10) : ''}</span>
+            </div>
+          </div>
+        `).join("") || '<div class="text-xs text-slate-400 p-4 text-center border rounded">No evidence uploaded yet.</div>'}
+      </div>
+
+      <div class="flex justify-end gap-2 mt-4">
+        <button class="tb text-xs" onclick="closeModal()">Close</button>
+      </div>
+    </div>
+  `);
+}
+
+async function uploadEvidenceForClaim(claimId) {
+  const fileInput = $("ev-file");
+  const folderId = val("ev-folder");
+  const evType = val("ev-type");
+
+  if (!fileInput || !fileInput.files.length) {
+    toast("Please select an evidence file.", "error");
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", fileInput.files[0]);
+  formData.append("folder_id", folderId);
+  formData.append("evidence_type", evType);
+  formData.append("notes", `Uploaded via Claim File #${claimId}`);
+
+  try {
+    const token = localStorage.getItem("newton_access_token") || localStorage.getItem("token");
+    const res = await fetch(`/api/insurance/claims/${claimId}/evidence`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    toast(`Evidence uploaded! Fraud Flag: ${data.is_fraud_flagged ? 'ALERT!' : 'CLEAN'}`, data.is_fraud_flagged ? "error" : "success");
+    openClaimDetailWorkspace(claimId);
+  } catch (e) {
+    toast(`Upload failed: ${e.message}`, "error");
+  }
+}
+
+async function downloadSettlementPDF(claimId) {
+  try {
+    const token = localStorage.getItem("newton_access_token") || localStorage.getItem("token");
+    const res = await fetch(`/api/insurance/claims/${claimId}/generate-settlement`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ notes: "Official payout certified by insurance claims department." }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Settlement_Claim_${claimId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    toast("Downloaded official Settlement Statement PDF!", "success");
+  } catch (e) {
+    toast(`Download failed: ${e.message}`, "error");
+  }
+}
+
+async function openInsurancePolicyModal() {
+  const policies = (await apiFetch("/insurance/policies")) || [];
+  showModal(`
+    <div class="p-4" style="max-width:700px">
+      <h3 class="font-bold text-base mb-2"><i class="fa-solid fa-shield-halved text-blue-600"></i> Policy Administration &amp; Endorsement Portfolio</h3>
+      <div class="space-y-2 max-h-56 overflow-y-auto mb-4 text-xs">
+        ${policies.map((p) => `
+          <div class="p-2.5 border rounded-lg bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
+            <div>
+              <div class="font-bold text-slate-800 dark:text-slate-200">${esc(p.policy_number)} - ${esc(p.insured_name)}</div>
+              <div class="text-2xs text-slate-500 font-mono">Type: ${esc(p.policy_type.toUpperCase())} · Limit: $${p.coverage_limit.toLocaleString()} · Deductible: $${p.deductible}</div>
+            </div>
+            <span class="px-2 py-0.5 rounded text-2xs font-semibold uppercase bg-blue-100 text-blue-800">${esc(p.status)}</span>
+          </div>
+        `).join("") || '<div class="text-slate-400">No policies registered.</div>'}
+      </div>
+      <div class="flex justify-end gap-2">
+        <button class="tb text-xs" onclick="closeModal()">Close</button>
+      </div>
+    </div>
+  `);
+}
+
+async function openInsuranceIDPModal() {
+  showModal(`
+    <div class="p-4" style="max-width:600px">
+      <h3 class="font-bold text-base mb-2"><i class="fa-solid fa-wand-magic-sparkles text-amber-500"></i> IDP Claims Document Parser</h3>
+      <p class="text-xs text-slate-500 mb-3">Extract structured accident, diagnosis, and estimate metadata from unstructured documents.</p>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-semibold mb-1">Document Category</label>
+          <select id="idp-type" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900">
+            <option value="police_report">Police Traffic Crash / Incident Report</option>
+            <option value="medical_record">Medical Billing &amp; ICD-10 Diagnosis</option>
+            <option value="repair_estimate">Auto Body Repair Estimate (VIN, Parts, Labor)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block font-semibold mb-1">OCR Raw Text / Report Paste</label>
+          <textarea id="idp-text" rows="5" placeholder="Paste police crash narrative, medical discharge bill, or repair estimate dump…" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-mono text-2xs"></textarea>
+        </div>
+      </div>
+
+      <div id="idp-results" class="border rounded p-3 bg-slate-50 dark:bg-slate-900 text-xs mt-3 hidden"></div>
+
+      <div class="flex justify-end gap-2 mt-4">
+        <button class="tb text-xs" onclick="closeModal()">Close</button>
+        <button class="tb primary text-xs" onclick="submitIDPExtract()">Extract Structured Fields</button>
+      </div>
+    </div>
+  `);
+}
+
+async function submitIDPExtract() {
+  const text = val("idp-text");
+  const docType = val("idp-type");
+  if (!text) {
+    toast("Please enter text to parse.", "error");
+    return;
+  }
+
+  const resultsBox = $("idp-results");
+  resultsBox.innerHTML = `<div class="text-slate-400"><i class="fa-solid fa-spinner fa-spin"></i> Parsing structured claims metadata…</div>`;
+  resultsBox.classList.remove("hidden");
+
+  try {
+    const res = await apiFetch("/insurance/idp/extract", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ doc_type: docType, text }),
+    });
+    resultsBox.innerHTML = `<pre class="text-2xs font-mono overflow-x-auto">${esc(JSON.stringify(res, null, 2))}</pre>`;
+    toast("IDP extraction complete!", "success");
+  } catch (e) {
+    resultsBox.innerHTML = `<div class="text-rose-600">IDP extraction error: ${e.message}</div>`;
+  }
+}
+
+async function openClaimPortalModal() {
+  const claims = (await apiFetch("/insurance/claims")) || [];
+  showModal(`
+    <div class="p-4" style="max-width:550px">
+      <h3 class="font-bold text-base mb-2"><i class="fa-solid fa-user-shield text-purple-500"></i> Generate Secure Adjuster / Policyholder Portal</h3>
+      <p class="text-xs text-slate-500 mb-3">Create encrypted, tokenized access for independent adjusters, medical providers, or body shops to upload evidence.</p>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-semibold mb-1">Target Claim *</label>
+          <select id="cp-claim" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-semibold">
+            ${claims.map((c) => `<option value="${c.id}">${esc(c.claim_number)} - ${esc(c.claimant_name)} (${esc(c.loss_type).toUpperCase()})</option>`).join("")}
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold mb-1">Recipient Name</label>
+            <input id="cp-name" placeholder="e.g. Crawford &amp; Co TPA" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Recipient Email *</label>
+            <input id="cp-email" type="email" placeholder="adjuster@crawford.com" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold mb-1">Recipient Role</label>
+          <select id="cp-role" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900">
+            <option value="independent_adjuster">Independent Adjuster (TPA)</option>
+            <option value="policyholder">Policyholder / Claimant</option>
+            <option value="repair_shop">Auto Body / Repair Shop</option>
+            <option value="medical_provider">Medical Provider / Hospital</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block font-semibold mb-1">Access Password *</label>
+          <input id="cp-pwd" type="password" placeholder="Enter secure portal password" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 mt-4">
+        <button class="tb text-xs" onclick="closeModal()">Cancel</button>
+        <button class="tb primary text-xs bg-purple-600 hover:bg-purple-700" onclick="submitClaimPortal()">Generate Portal Link</button>
+      </div>
+    </div>
+  `);
+}
+
+async function submitClaimPortal() {
+  const claimId = parseInt(val("cp-claim"), 10);
+  const email = val("cp-email");
+  const pwd = val("cp-pwd");
+
+  if (!claimId || !email || !pwd) {
+    toast("Claim, email, and password are required.", "error");
+    return;
+  }
+
+  try {
+    const res = await apiFetch("/insurance/portals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        claim_id: claimId,
+        recipient_email: email,
+        recipient_name: val("cp-name") || undefined,
+        recipient_role: val("cp-role"),
+        password: pwd,
+        expires_in_days: 14,
+      }),
+    });
+    closeModal();
+    toast(`Portal token generated! Token: ${res.token}`, "success");
+    adminTab("insurance");
+  } catch (e) {
+    toast(`Portal generation failed: ${e.message}`, "error");
   }
 }

@@ -1089,3 +1089,109 @@ class ERPIntegrationCreate(BaseModel):
     company_id: str | None = None
     endpoint_url: str | None = None
     config_json: dict[str, Any] = Field(default_factory=dict)
+
+
+# =============================================================================
+# INSURANCE & CLAIMS MANAGEMENT SCHEMAS
+# =============================================================================
+
+
+class InsurancePolicyCreate(BaseModel):
+    policy_number: str
+    insured_name: str
+    policy_type: str = "auto"
+    effective_date: datetime | None = None
+    expiration_date: datetime | None = None
+    premium: float = 0.0
+    deductible: float = 500.0
+    coverage_limit: float = 100000.0
+    status: str = "active"
+    master_policy_id: int | None = None
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class InsurancePolicyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    policy_number: str
+    insured_name: str
+    policy_type: str
+    effective_date: datetime | None = None
+    expiration_date: datetime | None = None
+    premium: float
+    deductible: float
+    coverage_limit: float
+    status: str
+    master_policy_id: int | None = None
+    metadata_json: dict[str, Any] | None = None
+    created_at: datetime | None = None
+
+
+class InsuranceClaimCreate(BaseModel):
+    claim_number: str
+    policy_id: int
+    claimant_name: str
+    loss_date: datetime | None = None
+    loss_type: str = "collision"
+    loss_location: str | None = None
+    estimated_loss: float = 0.0
+    notes: str | None = None
+
+
+class InsuranceClaimOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    claim_number: str
+    policy_id: int
+    claimant_name: str
+    loss_date: datetime | None = None
+    loss_type: str
+    loss_location: str | None = None
+    estimated_loss: float
+    settlement_amount: float
+    assigned_adjuster_id: int | None = None
+    status: str
+    auto_approved: bool
+    fraud_score: int
+    fraud_flags: list[str] | None = None
+    notes: str | None = None
+    created_at: datetime | None = None
+
+
+class ClaimEvidenceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    claim_id: int
+    document_id: int
+    evidence_type: str
+    exif_metadata: dict[str, Any] | None = None
+    image_hash: str | None = None
+    is_fraud_flagged: bool
+    notes: str | None = None
+    created_at: datetime | None = None
+
+
+class ClaimPortalShareCreate(BaseModel):
+    claim_id: int
+    recipient_email: str
+    recipient_name: str | None = None
+    recipient_role: str = "policyholder"
+    password: str
+    expires_in_days: int = 14
+
+
+class ClaimPortalShareOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    token: str
+    claim_id: int
+    recipient_email: str
+    recipient_name: str | None = None
+    recipient_role: str
+    expires_at: datetime | None = None
+    access_count: int
+    created_at: datetime | None = None

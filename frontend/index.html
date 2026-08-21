@@ -218,6 +218,13 @@
           <button class="admin-item" data-admin="accounting-audit" onclick="openAuditorPortalModal()">Auditor Portals</button>
         </div>
         <div class="admin-block">
+          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-car-burst text-rose-500"></i> Insurance &amp; Claims</button>
+          <button class="admin-item" data-admin="insurance" onclick="adminTab('insurance')">Claims Docket &amp; FNOL</button>
+          <button class="admin-item" data-admin="insurance-policies" onclick="openInsurancePolicyModal()">Policy Portfolio</button>
+          <button class="admin-item" data-admin="insurance-idp" onclick="openInsuranceIDPModal()">IDP Claims Extraction</button>
+          <button class="admin-item" data-admin="insurance-portals" onclick="openClaimPortalModal()">Adjuster Portals</button>
+        </div>
+        <div class="admin-block">
           <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-caret-down"></i> Ingest</button>
           <button class="admin-item" data-admin="imports" onclick="adminTab('imports')">Hot folders</button>
           <button class="admin-item" data-admin="mailbox-tasks" onclick="adminTab('mailbox-tasks')">Mailbox import</button>
