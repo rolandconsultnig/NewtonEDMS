@@ -21,8 +21,16 @@
   <script>
     let stream;
     async function startCam() {
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      document.getElementById("cam").srcObject = stream;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        document.getElementById("msg").textContent = "Camera access requires HTTPS or localhost.";
+        return;
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        document.getElementById("cam").srcObject = stream;
+      } catch (e) {
+        document.getElementById("msg").textContent = "Camera error: " + e.message;
+      }
     }
     async function capture() {
       const video = document.getElementById("cam");

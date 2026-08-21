@@ -1252,8 +1252,17 @@
     refreshCurrentList();
   };
   window.startScanCam = async function () {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-    $("scan-cam").srcObject = stream;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast("Camera access requires a Secure Context (HTTPS or localhost). Modern browsers disable webcam APIs over insecure HTTP IP connections.", "error");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      const cam = $("scan-cam");
+      if (cam) cam.srcObject = stream;
+    } catch (e) {
+      toast("Camera error: " + e.message, "error");
+    }
   };
 
   const _holdsList = typeof renderEntTab === "function" ? null : null;
