@@ -53,6 +53,7 @@ from app.storage import doc_storage_dir, save_upload, validate_upload_filename
 
 logger = logging.getLogger("newtonedms.ce")
 router = APIRouter(prefix="/api", tags=["community"])
+open_ce = APIRouter(tags=["community_open"])
 
 ACL_NAMES = list(ACL_BITS.keys())
 
@@ -817,12 +818,18 @@ class ApiKeyIn(BaseModel):
 
 
 @router.get("/apikeys")
+@router.get("/api-keys")
+@open_ce.get("/apikeys")
+@open_ce.get("/api-keys")
 def list_keys(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     rows = db.query(ApiKey).filter(ApiKey.user_id == user.id).all()
     return [{"id": k.id, "name": k.name, "prefix": k.prefix, "created_at": k.created_at, "last_used_at": k.last_used_at} for k in rows]
 
 
 @router.post("/apikeys")
+@router.post("/api-keys")
+@open_ce.post("/apikeys")
+@open_ce.post("/api-keys")
 def create_key(payload: ApiKeyIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     raw = secrets.token_urlsafe(32)
     prefix = raw[:8]
@@ -834,6 +841,9 @@ def create_key(payload: ApiKeyIn, db: Session = Depends(get_db), user: User = De
 
 
 @router.delete("/apikeys/{key_id}")
+@router.delete("/api-keys/{key_id}")
+@open_ce.delete("/apikeys/{key_id}")
+@open_ce.delete("/api-keys/{key_id}")
 def delete_key(key_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     row = db.get(ApiKey, key_id)
     if row and row.user_id == user.id:

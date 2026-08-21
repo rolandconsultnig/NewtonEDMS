@@ -1034,11 +1034,13 @@ def send_mail(
 # Notification rules + addons
 # ---------------------------------------------------------------------------
 @router.get("/notification-rules", response_model=list[NotificationRuleOut])
+@router.get("/notify-rules", response_model=list[NotificationRuleOut])
 def list_rules(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     return db.query(NotificationRule).filter(NotificationRule.user_id == user.id).all()
 
 
 @router.post("/notification-rules", response_model=NotificationRuleOut)
+@router.post("/notify-rules", response_model=NotificationRuleOut)
 def create_rule(
     payload: NotificationRuleCreate,
     db: Session = Depends(get_db),
@@ -1058,6 +1060,7 @@ def create_rule(
 
 
 @router.delete("/notification-rules/{rule_id}")
+@router.delete("/notify-rules/{rule_id}")
 def delete_rule(
     rule_id: int,
     db: Session = Depends(get_db),

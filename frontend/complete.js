@@ -584,7 +584,7 @@
       const [ch, hooks, rules] = await Promise.all([
         apiFetch("/notify-channels").catch(() => []),
         apiFetch("/event-hooks").catch(() => []),
-        apiFetch("/notify-rules").catch(() => apiFetch("/notification-rules").catch(() => [])),
+        apiFetch("/notification-rules").catch(() => []),
       ]);
       content.innerHTML = `<h3>Notify channels</h3>
         <div class="flex gap-2 mb-2"><input id="nc-name" placeholder="Name" /><select id="nc-kind"><option>email</option><option>webhook</option><option>matrix</option></select>
