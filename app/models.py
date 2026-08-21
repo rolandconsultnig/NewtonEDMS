@@ -1115,3 +1115,103 @@ class SecureExtranetPortal(Base):
     last_accessed_at = Column(DateTime)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=now)
+
+
+# =============================================================================
+# ACCOUNTING & FINANCIAL EDMS MODELS
+# =============================================================================
+
+
+class PurchaseOrder(Base):
+    """Purchase Order (PO) record for 2-way and 3-way matching."""
+
+    __tablename__ = "purchase_orders"
+    id = Column(Integer, primary_key=True, index=True)
+    po_number = Column(String, unique=True, index=True, nullable=False)
+    vendor_name = Column(String, index=True, nullable=False)
+    total_amount = Column(Float, default=0.0)
+    currency = Column(String, default="USD")
+    status = Column(String, default="issued")  # draft, issued, partially_received, fulfilled, closed, cancelled
+    line_items = Column(JSON, default=list)  # list of {"item_code", "description", "qty", "unit_price", "total"}
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class GoodsReceivedNote(Base):
+    """Goods Received Note (GRN) warehouse receiving record."""
+
+    __tablename__ = "goods_received_notes"
+    id = Column(Integer, primary_key=True, index=True)
+    grn_number = Column(String, unique=True, index=True, nullable=False)
+    po_number = Column(String, index=True, nullable=False)
+    vendor_name = Column(String, index=True, nullable=False)
+    received_date = Column(DateTime, default=now)
+    line_items = Column(JSON, default=list)  # list of {"item_code", "description", "received_qty", "accepted_qty"}
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class InvoiceRecord(Base):
+    """Financial Vendor Invoice record with OCR data and matching audit trail."""
+
+    __tablename__ = "invoice_records"
+    id = Column(Integer, primary_key=True, index=True)
+    invoice_number = Column(String, index=True, nullable=False)
+    vendor_name = Column(String, index=True, nullable=False)
+    vendor_tax_id = Column(String, index=True)  # VAT / EIN / Tax registration
+    po_number = Column(String, index=True)
+    grn_number = Column(String, index=True)
+    subtotal = Column(Float, default=0.0)
+    tax_amount = Column(Float, default=0.0)
+    total_amount = Column(Float, default=0.0)
+    currency = Column(String, default="USD")
+    invoice_date = Column(DateTime)
+    due_date = Column(DateTime)
+    gl_account = Column(String, index=True)  # e.g. "6010-Office Supplies"
+    cost_center = Column(String, index=True)  # e.g. "CC-100-Operations"
+    line_items = Column(JSON, default=list)  # list of {"description", "qty", "unit_price", "tax_rate", "total"}
+    matching_status = Column(String, default="unmatched")  # unmatched, matched_2way, matched_3way, price_variance, quantity_variance, missing_po, missing_grn
+    matching_notes = Column(Text)
+    payment_status = Column(String, default="pending_approval")  # pending_approval, approved, paid, disputed, rejected
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=True, index=True)
+    is_duplicate = Column(Boolean, default=False)
+    duplicate_of_id = Column(Integer, ForeignKey("invoice_records.id"), nullable=True)
+    peppol_validated = Column(Boolean, default=False)
+    peppol_schema = Column(String)  # e.g. PEPPOL_BIS_3.0, UBL_2.1
+    metadata_json = Column("metadata", JSON, default=dict)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class ERPIntegration(Base):
+    """Configuration and sync history for ERP & GL platforms (SAP, NetSuite, QuickBooks, Xero, Sage)."""
+
+    __tablename__ = "erp_integrations"
+    id = Column(Integer, primary_key=True, index=True)
+    platform = Column(String, nullable=False)  # sap, netsuite, quickbooks, xero, sage
+    company_id = Column(String)
+    endpoint_url = Column(String)
+    sync_status = Column(String, default="configured")  # configured, syncing, active, error
+    last_synced_at = Column(DateTime)
+    config_json = Column(JSON, default=dict)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class AuditorPortal(Base):
+    """Temporary, read-only restricted auditor review portal."""
+
+    __tablename__ = "auditor_portals"
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, unique=True, index=True, nullable=False)
+    auditor_name = Column(String, nullable=False)
+    auditor_email = Column(String, nullable=False)
+    firm_name = Column(String)
+    sample_document_ids = Column(JSON, default=list)
+    allowed_gl_accounts = Column(JSON, default=list)
+    password_hash = Column(String)
+    expires_at = Column(DateTime, nullable=True)
+    access_count = Column(Integer, default=0)
+    last_accessed_at = Column(DateTime)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)

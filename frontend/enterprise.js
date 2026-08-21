@@ -1,7 +1,7 @@
 /* NewtonEDMS enterprise UI: workflow canvas, rules, compliance, RAG, connectors, ProcessMaker studio. */
 const ENT_TABS = new Set([
   "rules", "forms", "zones", "holds", "cases", "bpmn", "rag", "connectors",
-  "cluster", "compliance", "security-policy", "report-builder", "office", "workflows", "legal",
+  "cluster", "compliance", "security-policy", "report-builder", "office", "workflows", "legal", "accounting",
 ]);
 
 const _entAdmin = typeof adminTab === "function" ? adminTab : null;
@@ -319,6 +319,8 @@ async function renderEntTab(tab) {
     `;
   } else if (tab === "legal") {
     await renderLegalTab(content);
+  } else if (tab === "accounting") {
+    await renderAccountingTab(content);
   }
 }
 
@@ -1865,5 +1867,635 @@ async function submitLegalWall(matterId) {
     adminTab("legal");
   } catch (e) {
     toast(`Failed to enforce ethical wall: ${e.message}`, "error");
+  }
+}
+
+/* =============================================================================
+   ACCOUNTING & FINANCIAL EDMS UI (2/3-Way Matching, OCR, ERP Sync, PEPPOL)
+   ============================================================================= */
+
+async function renderAccountingTab(content) {
+  content.innerHTML = `<div class="p-4 text-xs text-slate-400"><i class="fa-solid fa-spinner fa-spin"></i> Loading Financial & AP Center…</div>`;
+  try {
+    const invoices = (await apiFetch("/accounting/invoices")) || [];
+    const pos = (await apiFetch("/accounting/purchase-orders")) || [];
+
+    const matched3wayCount = invoices.filter((i) => i.matching_status === "matched_3way" || i.matching_status === "matched_2way").length;
+    const discrepanciesCount = invoices.filter((i) => i.matching_status === "price_variance" || i.matching_status === "quantity_variance").length;
+    const duplicatesCount = invoices.filter((i) => i.is_duplicate).length;
+
+    content.innerHTML = `
+      <div style="padding:4px">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div>
+            <h3 class="font-bold text-base mb-0.5"><i class="fa-solid fa-file-invoice-dollar text-emerald-600"></i> Accounts Payable & Financial EDMS Hub</h3>
+            <p class="text-xs text-slate-500">Automated 2-way and 3-way matching, line-item OCR extraction, ERP/GL sync, PEPPOL e-invoicing, and auditor portals.</p>
+          </div>
+          <div class="flex gap-2 flex-wrap">
+            <button class="tb text-xs" onclick="openAccountingPOModal()"><i class="fa-solid fa-clipboard-list text-blue-500"></i> POs &amp; GRNs</button>
+            <button class="tb text-xs" onclick="openBatchBarcodeModal()"><i class="fa-solid fa-barcode text-indigo-500"></i> Barcode Batch Split</button>
+            <button class="tb text-xs" onclick="openPeppolModal()"><i class="fa-solid fa-file-code text-amber-500"></i> PEPPOL E-Invoicing</button>
+            <button class="tb text-xs" onclick="openAuditorPortalModal()"><i class="fa-solid fa-user-shield text-purple-500"></i> Auditor Portals</button>
+            <button class="tb primary text-xs" onclick="openNewInvoiceModal()"><i class="fa-solid fa-plus"></i> Ingest Invoice</button>
+          </div>
+        </div>
+
+        <!-- Metrics Cards -->
+        <div class="grid grid-cols-4 gap-3 mb-4">
+          <div class="border rounded-lg p-3 bg-slate-50 dark:bg-slate-800">
+            <div class="text-2xs uppercase text-slate-400 font-bold mb-1">Total Invoices</div>
+            <div class="text-xl font-bold text-slate-800 dark:text-slate-100">${invoices.length}</div>
+            <div class="text-2xs text-slate-500 mt-1">${pos.length} Active POs referenced</div>
+          </div>
+          <div class="border rounded-lg p-3 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800">
+            <div class="text-2xs uppercase text-emerald-600 dark:text-emerald-400 font-bold mb-1">2/3-Way Matched</div>
+            <div class="text-xl font-bold text-emerald-700 dark:text-emerald-300">${matched3wayCount}</div>
+            <div class="text-2xs text-emerald-600 dark:text-emerald-400 mt-1">Verified with PO &amp; GRN</div>
+          </div>
+          <div class="border rounded-lg p-3 bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800">
+            <div class="text-2xs uppercase text-amber-600 dark:text-amber-400 font-bold mb-1">Price/Qty Variances</div>
+            <div class="text-xl font-bold text-amber-700 dark:text-amber-300">${discrepanciesCount}</div>
+            <div class="text-2xs text-amber-600 dark:text-amber-400 mt-1">Discrepancy flag active</div>
+          </div>
+          <div class="border rounded-lg p-3 bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800">
+            <div class="text-2xs uppercase text-rose-600 dark:text-rose-400 font-bold mb-1">Duplicate Alerts</div>
+            <div class="text-xl font-bold text-rose-700 dark:text-rose-300">${duplicatesCount}</div>
+            <div class="text-2xs text-rose-600 dark:text-rose-400 mt-1">Potential double-payment</div>
+          </div>
+        </div>
+
+        <!-- Invoices Table -->
+        <div class="border rounded-lg overflow-hidden bg-white dark:bg-slate-800 shadow-sm">
+          <div class="p-3 bg-slate-50 dark:bg-slate-800/80 border-b flex items-center justify-between flex-wrap gap-2">
+            <strong class="text-xs font-semibold">Vendor Invoices &amp; Accounts Payable Vouchers</strong>
+            <span class="text-2xs text-slate-400">Strict WORM Audit Compliance Enforced</span>
+          </div>
+
+          <table class="w-full text-xs text-left border-collapse">
+            <thead class="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold border-b">
+              <tr>
+                <th class="p-2.5">Invoice #</th>
+                <th class="p-2.5">Vendor</th>
+                <th class="p-2.5">PO / GRN Ref</th>
+                <th class="p-2.5">Total Amount</th>
+                <th class="p-2.5">GL Account</th>
+                <th class="p-2.5">Matching Status</th>
+                <th class="p-2.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
+              ${invoices.map((inv) => renderInvoiceRow(inv)).join("") || `
+                <tr>
+                  <td colspan="7" class="p-8 text-center text-slate-400">
+                    <i class="fa-solid fa-receipt text-3xl mb-2 text-slate-300 block"></i>
+                    No vendor invoices recorded yet.<br>
+                    <button class="tb primary text-xs mt-3" onclick="openNewInvoiceModal()"><i class="fa-solid fa-plus"></i> Ingest First Invoice</button>
+                  </td>
+                </tr>
+              `}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } catch (e) {
+    content.innerHTML = `<div class="p-4 text-xs text-red-500">Failed to load accounting suite: ${e.message}</div>`;
+  }
+}
+
+function renderInvoiceRow(inv) {
+  const matchColors = {
+    matched_3way: "bg-emerald-100 text-emerald-800 border-emerald-300",
+    matched_2way: "bg-blue-100 text-blue-800 border-blue-300",
+    price_variance: "bg-rose-100 text-rose-800 border-rose-300",
+    quantity_variance: "bg-amber-100 text-amber-800 border-amber-300",
+    missing_po: "bg-orange-100 text-orange-800 border-orange-300",
+    missing_grn: "bg-amber-100 text-amber-800 border-amber-300",
+    unmatched: "bg-slate-100 text-slate-700 border-slate-300",
+  };
+  const badgeCls = matchColors[inv.matching_status] || "bg-slate-100 text-slate-700";
+
+  return `
+    <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+      <td class="p-2.5 font-mono font-bold text-slate-800 dark:text-slate-200">
+        ${esc(inv.invoice_number)}
+        ${inv.is_duplicate ? `<span class="ml-1.5 px-1.5 py-0.5 rounded text-3xs font-bold uppercase bg-rose-600 text-white animate-pulse">DUPLICATE</span>` : ''}
+      </td>
+      <td class="p-2.5">
+        <div class="font-semibold">${esc(inv.vendor_name)}</div>
+        ${inv.vendor_tax_id ? `<div class="text-2xs text-slate-400 font-mono">Tax ID: ${esc(inv.vendor_tax_id)}</div>` : ''}
+      </td>
+      <td class="p-2.5 font-mono text-2xs">
+        <div>PO: <strong>${esc(inv.po_number || 'None')}</strong></div>
+        ${inv.grn_number ? `<div class="text-slate-400">GRN: ${esc(inv.grn_number)}</div>` : ''}
+      </td>
+      <td class="p-2.5 font-bold text-slate-900 dark:text-slate-100">
+        $${inv.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        <span class="text-2xs font-normal text-slate-400">(${esc(inv.currency)})</span>
+      </td>
+      <td class="p-2.5 text-2xs font-mono">
+        <span class="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700">${esc(inv.gl_account || '6000-General')}</span>
+      </td>
+      <td class="p-2.5">
+        <span class="px-2 py-0.5 rounded text-2xs font-semibold uppercase border ${badgeCls}">${esc(inv.matching_status.replace(/_/g, ' '))}</span>
+      </td>
+      <td class="p-2.5 text-right space-x-1">
+        <button class="tb text-2xs" onclick="open3WayMatchVisualizerModal(${inv.id})"><i class="fa-solid fa-code-compare text-blue-500"></i> Match Visualizer</button>
+        <button class="tb text-2xs" onclick="openERPSyncModal(${inv.id})"><i class="fa-solid fa-arrows-rotate text-emerald-500"></i> Sync ERP</button>
+      </td>
+    </tr>
+  `;
+}
+
+/* =============================================================================
+   ACCOUNTING MODALS & WORKFLOWS
+   ============================================================================= */
+
+async function openNewInvoiceModal() {
+  const pos = (await apiFetch("/accounting/purchase-orders")) || [];
+  showModal(`
+    <div class="p-4" style="max-width:650px">
+      <h3 class="font-bold text-base mb-2"><i class="fa-solid fa-receipt text-emerald-600"></i> Ingest Vendor Invoice &amp; Run 3-Way Match</h3>
+      <p class="text-xs text-slate-500 mb-3">Upload invoice PDF or enter header details. Triggers automated OCR parsing, duplicate check, and PO/GRN matching.</p>
+
+      <div class="space-y-3 text-xs">
+        <div class="p-2.5 bg-slate-50 dark:bg-slate-900 rounded border">
+          <label class="block font-semibold mb-1">OCR Text / Raw Invoice Paste (Auto-Extracts Line Items)</label>
+          <textarea id="inv-ocr-text" rows="3" placeholder="Paste invoice text or receipt dump to auto-populate fields…" class="w-full border p-1.5 rounded bg-white dark:bg-slate-800 text-2xs font-mono"></textarea>
+          <button class="tb text-2xs mt-1" onclick="runInvoiceOcrExtract()"><i class="fa-solid fa-wand-magic-sparkles text-amber-500"></i> Auto-Populate from OCR</button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold mb-1">Invoice Number *</label>
+            <input id="inv-number" placeholder="e.g. INV-2026-8801" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-mono" />
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Vendor Name *</label>
+            <input id="inv-vendor" placeholder="e.g. Dell Technologies" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3">
+          <div>
+            <label class="block font-semibold mb-1">Vendor Tax ID / VAT</label>
+            <input id="inv-taxid" placeholder="e.g. US-45892019" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-mono" />
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Matching Purchase Order</label>
+            <select id="inv-po" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900">
+              <option value="">No PO reference</option>
+              ${pos.map((p) => `<option value="${p.po_number}">${esc(p.po_number)} - ${esc(p.vendor_name)} ($${p.total_amount})</option>`).join("")}
+            </select>
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">GRN Number</label>
+            <input id="inv-grn" placeholder="e.g. GRN-2026-4401" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-mono" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3">
+          <div>
+            <label class="block font-semibold mb-1">Subtotal ($)</label>
+            <input id="inv-subtotal" type="number" step="0.01" value="0.00" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Tax Amount ($)</label>
+            <input id="inv-tax" type="number" step="0.01" value="0.00" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Total Amount ($) *</label>
+            <input id="inv-total" type="number" step="0.01" value="0.00" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-bold text-emerald-600" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold mb-1">GL Account</label>
+            <input id="inv-gl" value="6010-Office Supplies & Tech" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-mono text-2xs" />
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Cost Center</label>
+            <input id="inv-cc" value="CC-OPERATIONS-01" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-mono text-2xs" />
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 mt-4">
+        <button class="tb text-xs" onclick="closeModal()">Cancel</button>
+        <button class="tb primary text-xs" onclick="submitNewInvoice()">Create &amp; 3-Way Match</button>
+      </div>
+    </div>
+  `);
+}
+
+async function runInvoiceOcrExtract() {
+  const text = val("inv-ocr-text");
+  if (!text) {
+    toast("Please enter invoice text to extract.", "error");
+    return;
+  }
+  try {
+    const res = await apiFetch("/accounting/invoices/extract-ocr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (res.invoice_number) $("inv-number").value = res.invoice_number;
+    if (res.vendor_name) $("inv-vendor").value = res.vendor_name;
+    if (res.vendor_tax_id) $("inv-taxid").value = res.vendor_tax_id;
+    if (res.po_number) $("inv-po").value = res.po_number;
+    if (res.subtotal) $("inv-subtotal").value = res.subtotal;
+    if (res.tax_amount) $("inv-tax").value = res.tax_amount;
+    if (res.total_amount) $("inv-total").value = res.total_amount;
+    toast("Extracted invoice header and line items successfully!", "success");
+  } catch (e) {
+    toast(`Extraction failed: ${e.message}`, "error");
+  }
+}
+
+async function submitNewInvoice() {
+  const invNum = val("inv-number");
+  const vendor = val("inv-vendor");
+  const totalAmt = parseFloat(val("inv-total") || "0.0");
+
+  if (!invNum || !vendor || !totalAmt) {
+    toast("Invoice number, vendor, and total amount are required.", "error");
+    return;
+  }
+
+  try {
+    const res = await apiFetch("/accounting/invoices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        invoice_number: invNum,
+        vendor_name: vendor,
+        vendor_tax_id: val("inv-taxid") || undefined,
+        po_number: val("inv-po") || undefined,
+        grn_number: val("inv-grn") || undefined,
+        subtotal: parseFloat(val("inv-subtotal") || "0.0"),
+        tax_amount: parseFloat(val("inv-tax") || "0.0"),
+        total_amount: totalAmt,
+        gl_account: val("inv-gl") || undefined,
+        cost_center: val("inv-cc") || undefined,
+      }),
+    });
+    closeModal();
+    toast(`Invoice ${res.invoice_number} registered! Matching: ${res.matching_status.toUpperCase()}`, "success");
+    adminTab("accounting");
+  } catch (e) {
+    toast(`Invoice creation failed: ${e.message}`, "error");
+  }
+}
+
+async function open3WayMatchVisualizerModal(invoiceId) {
+  const matchResult = await apiFetch(`/accounting/invoices/${invoiceId}/match`, { method: "POST" }).catch(() => null);
+  const inv = await apiFetch(`/accounting/invoices/${invoiceId}`).catch(() => null);
+
+  if (!matchResult || !inv) {
+    toast("Failed to load matching visualizer.", "error");
+    return;
+  }
+
+  showModal(`
+    <div class="p-4" style="max-width:750px">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="font-bold text-base"><i class="fa-solid fa-code-compare text-blue-600"></i> Automated 3-Way Match Visualizer</h3>
+        <span class="px-2 py-0.5 rounded text-xs font-semibold uppercase ${matchResult.status === 'matched_3way' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${esc(matchResult.status.replace(/_/g, ' '))}</span>
+      </div>
+      <p class="text-xs text-slate-500 mb-3">${esc(matchResult.notes)}</p>
+
+      <div class="grid grid-cols-3 gap-3 mb-4 text-xs">
+        <div class="p-2.5 rounded border bg-slate-50 dark:bg-slate-900">
+          <strong class="text-slate-500 block mb-1">1. Vendor Invoice</strong>
+          <div class="font-bold text-sm">${esc(inv.invoice_number)}</div>
+          <div>Vendor: <strong>${esc(inv.vendor_name)}</strong></div>
+          <div>Amount: <strong>$${inv.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></div>
+        </div>
+        <div class="p-2.5 rounded border bg-slate-50 dark:bg-slate-900">
+          <strong class="text-slate-500 block mb-1">2. Purchase Order</strong>
+          <div class="font-bold text-sm">${esc(matchResult.po_number || 'N/A')}</div>
+          <div>Status: <span class="text-blue-600 font-semibold">${matchResult.po_number ? 'Referenced' : 'Missing'}</span></div>
+        </div>
+        <div class="p-2.5 rounded border bg-slate-50 dark:bg-slate-900">
+          <strong class="text-slate-500 block mb-1">3. Goods Received Note</strong>
+          <div class="font-bold text-sm">${esc(matchResult.grn_number || 'N/A')}</div>
+          <div>Status: <span class="text-emerald-600 font-semibold">${matchResult.grn_number ? 'Warehouse Verified' : 'No GRN'}</span></div>
+        </div>
+      </div>
+
+      ${matchResult.discrepancies && matchResult.discrepancies.length ? `
+        <div class="p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 rounded-lg mb-3">
+          <strong class="text-xs text-rose-800 dark:text-rose-200 block mb-1"><i class="fa-solid fa-triangle-exclamation"></i> Discrepancy Warnings:</strong>
+          <ul class="list-disc pl-4 text-xs text-rose-700 dark:text-rose-300 space-y-1">
+            ${matchResult.discrepancies.map((d) => `<li>${esc(d)}</li>`).join("")}
+          </ul>
+        </div>
+      ` : ''}
+
+      <div class="flex justify-end gap-2 mt-4">
+        <button class="tb text-xs" onclick="closeModal()">Close</button>
+        <button class="tb primary text-xs" onclick="openERPSyncModal(${invoiceId})"><i class="fa-solid fa-arrows-rotate"></i> Sync to ERP GL</button>
+      </div>
+    </div>
+  `);
+}
+
+async function openAccountingPOModal() {
+  const pos = (await apiFetch("/accounting/purchase-orders")) || [];
+  const grns = (await apiFetch("/accounting/grns")) || [];
+
+  showModal(`
+    <div class="p-4" style="max-width:700px">
+      <h3 class="font-bold text-base mb-2"><i class="fa-solid fa-clipboard-list text-blue-600"></i> Purchase Orders &amp; Warehouse GRNs</h3>
+      <div class="grid grid-cols-2 gap-4 text-xs mb-4">
+        <div class="border rounded-lg p-3 bg-slate-50 dark:bg-slate-900">
+          <h4 class="font-bold mb-2 text-slate-800 dark:text-slate-200">Registered POs (${pos.length})</h4>
+          <div class="space-y-2 max-h-48 overflow-y-auto">
+            ${pos.map((p) => `
+              <div class="p-2 bg-white dark:bg-slate-800 rounded border">
+                <div class="flex justify-between font-bold"><span>${esc(p.po_number)}</span><span>$${p.total_amount.toFixed(2)}</span></div>
+                <div class="text-2xs text-slate-500">${esc(p.vendor_name)} · ${p.status}</div>
+              </div>
+            `).join("") || '<div class="text-slate-400">No POs registered.</div>'}
+          </div>
+        </div>
+
+        <div class="border rounded-lg p-3 bg-slate-50 dark:bg-slate-900">
+          <h4 class="font-bold mb-2 text-slate-800 dark:text-slate-200">Warehouse Receiving GRNs (${grns.length})</h4>
+          <div class="space-y-2 max-h-48 overflow-y-auto">
+            ${grns.map((g) => `
+              <div class="p-2 bg-white dark:bg-slate-800 rounded border">
+                <div class="flex justify-between font-bold"><span>${esc(g.grn_number)}</span><span>PO: ${esc(g.po_number)}</span></div>
+                <div class="text-2xs text-slate-500">${esc(g.vendor_name)}</div>
+              </div>
+            `).join("") || '<div class="text-slate-400">No GRNs recorded.</div>'}
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2">
+        <button class="tb text-xs" onclick="closeModal()">Close</button>
+      </div>
+    </div>
+  `);
+}
+
+async function openBatchBarcodeModal() {
+  const folders = (await apiFetch("/folders")) || [];
+  showModal(`
+    <div class="p-4" style="max-width:500px">
+      <h3 class="font-bold text-base mb-2"><i class="fa-solid fa-barcode text-indigo-500"></i> Barcode Separator Batch Splitter</h3>
+      <p class="text-xs text-slate-500 mb-3">Upload multi-page scanned PDF batches. Automatically splits documents at QR codes or separator pages (<code>[PAGE_SPLIT]</code> or <code>BARCODE:xxx</code>).</p>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-semibold mb-1">Target Folder *</label>
+          <select id="bc-folder" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900">
+            ${folders.map((f) => `<option value="${f.id}">${esc(f.name)}</option>`).join("")}
+          </select>
+        </div>
+
+        <div>
+          <label class="block font-semibold mb-1">Batch Batch Name</label>
+          <input id="bc-name" value="AP_Batch_Scan_${new Date().toISOString().slice(0,10)}" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-mono" />
+        </div>
+
+        <div>
+          <label class="block font-semibold mb-1">Multi-page PDF File *</label>
+          <input type="file" id="bc-file" accept=".pdf" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 mt-4">
+        <button class="tb text-xs" onclick="closeModal()">Cancel</button>
+        <button class="tb primary text-xs" onclick="submitBatchBarcodeSplit()">Split &amp; Index Batch</button>
+      </div>
+    </div>
+  `);
+}
+
+async function submitBatchBarcodeSplit() {
+  const fileInput = $("bc-file");
+  const folderId = val("bc-folder");
+  if (!fileInput || !fileInput.files.length) {
+    toast("Please select a PDF file.", "error");
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", fileInput.files[0]);
+  formData.append("folder_id", folderId);
+  formData.append("batch_name", val("bc-name") || "Batch_Scan");
+
+  try {
+    const token = localStorage.getItem("newton_access_token") || localStorage.getItem("token");
+    const res = await fetch("/api/accounting/batch-split", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    closeModal();
+    toast(`Batch split complete! Generated ${data.split_documents_count} indexed vouchers.`, "success");
+    adminTab("accounting");
+  } catch (e) {
+    toast(`Batch split failed: ${e.message}`, "error");
+  }
+}
+
+async function openPeppolModal() {
+  showModal(`
+    <div class="p-4" style="max-width:550px">
+      <h3 class="font-bold text-base mb-2"><i class="fa-solid fa-file-code text-amber-500"></i> PEPPOL BIS Billing 3.0 &amp; UBL E-Invoice Validator</h3>
+      <p class="text-xs text-slate-500 mb-3">Upload structured XML e-Invoices to validate European PEPPOL, UBL 2.1, and Factur-X tax compliance rules.</p>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-semibold mb-1">E-Invoice XML File *</label>
+          <input type="file" id="pep-file" accept=".xml" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+        </div>
+      </div>
+
+      <div id="pep-results" class="border rounded p-3 bg-slate-50 dark:bg-slate-900 text-xs mt-3 hidden"></div>
+
+      <div class="flex justify-end gap-2 mt-4">
+        <button class="tb text-xs" onclick="closeModal()">Close</button>
+        <button class="tb primary text-xs" onclick="submitPeppolValidation()">Validate E-Invoice</button>
+      </div>
+    </div>
+  `);
+}
+
+async function submitPeppolValidation() {
+  const fileInput = $("pep-file");
+  if (!fileInput || !fileInput.files.length) {
+    toast("Select an XML file.", "error");
+    return;
+  }
+  const formData = new FormData();
+  formData.append("file", fileInput.files[0]);
+
+  const resultsBox = $("pep-results");
+  resultsBox.innerHTML = `<div class="text-slate-400"><i class="fa-solid fa-spinner fa-spin"></i> Validating PEPPOL schema…</div>`;
+  resultsBox.classList.remove("hidden");
+
+  try {
+    const token = localStorage.getItem("newton_access_token") || localStorage.getItem("token");
+    const res = await fetch("/api/accounting/einvoice/validate", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    const data = await res.json();
+
+    resultsBox.innerHTML = `
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
+          <strong class="text-sm font-bold">${esc(data.standard)}</strong>
+          <span class="px-2 py-0.5 rounded text-2xs font-semibold ${data.valid ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${data.valid ? 'VALID COMPLIANT' : 'SCHEMA ERRORS'}</span>
+        </div>
+        <div>Invoice #: <strong>${esc(data.invoice_number)}</strong> · Payable: <strong>$${(data.payable_amount || 0).toFixed(2)}</strong></div>
+        <div>Supplier: <strong>${esc(data.supplier_name)}</strong> (Tax ID: <code>${esc(data.supplier_tax_id || 'N/A')}</code>)</div>
+        ${data.errors && data.errors.length ? `<div class="text-rose-600 font-semibold">${data.errors.join("; ")}</div>` : ''}
+      </div>
+    `;
+  } catch (e) {
+    resultsBox.innerHTML = `<div class="text-rose-600">Validation error: ${e.message}</div>`;
+  }
+}
+
+async function openAuditorPortalModal() {
+  const docs = (await apiFetch("/documents")) || [];
+  showModal(`
+    <div class="p-4" style="max-width:550px">
+      <h3 class="font-bold text-base mb-2"><i class="fa-solid fa-user-shield text-purple-500"></i> Generate Read-Only Auditor Portal</h3>
+      <p class="text-xs text-slate-500 mb-3">Create temporary, restricted review access for internal/external auditors to inspect voucher sample batches.</p>
+
+      <div class="space-y-3 text-xs">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold mb-1">Auditor Name *</label>
+            <input id="aud-name" placeholder="e.g. PwC Lead Senior" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Auditor Email *</label>
+            <input id="aud-email" type="email" placeholder="auditor@pwc.com" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold mb-1">Audit Firm Name</label>
+          <input id="aud-firm" placeholder="e.g. PricewaterhouseCoopers LLP" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+        </div>
+
+        <div>
+          <label class="block font-semibold mb-1">Access Password *</label>
+          <input id="aud-pwd" type="password" placeholder="Enter secure auditor password" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+        </div>
+
+        <div>
+          <label class="block font-semibold mb-1">Select Sample Documents</label>
+          <div class="space-y-1 max-h-32 overflow-y-auto border rounded p-2 bg-slate-50 dark:bg-slate-900">
+            ${docs.map((d) => `
+              <label class="flex items-center gap-2">
+                <input type="checkbox" class="aud-doc-cb" value="${d.id}" checked />
+                <span>${esc(d.title || d.name)}</span>
+              </label>
+            `).join("") || '<div class="text-slate-400">No documents available.</div>'}
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 mt-4">
+        <button class="tb text-xs" onclick="closeModal()">Cancel</button>
+        <button class="tb primary text-xs bg-purple-600 hover:bg-purple-700" onclick="submitAuditorPortal()">Generate Auditor Link</button>
+      </div>
+    </div>
+  `);
+}
+
+async function submitAuditorPortal() {
+  const docIds = [];
+  document.querySelectorAll(".aud-doc-cb:checked").forEach((cb) => {
+    docIds.push(parseInt(cb.value, 10));
+  });
+
+  try {
+    const res = await apiFetch("/accounting/auditor-portals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        auditor_name: val("aud-name"),
+        auditor_email: val("aud-email"),
+        firm_name: val("aud-firm"),
+        password: val("aud-pwd"),
+        sample_document_ids: docIds,
+        allowed_gl_accounts: ["6000-OpEx", "1000-Cash", "2000-AP"],
+      }),
+    });
+    closeModal();
+    toast(`Auditor portal token generated! Token: ${res.token}`, "success");
+    adminTab("accounting");
+  } catch (e) {
+    toast(`Portal generation failed: ${e.message}`, "error");
+  }
+}
+
+async function openERPSyncModal(invoiceId) {
+  showModal(`
+    <div class="p-4" style="max-width:500px">
+      <h3 class="font-bold text-base mb-2"><i class="fa-solid fa-arrows-rotate text-emerald-600"></i> Sync Source Document to ERP / GL</h3>
+      <p class="text-xs text-slate-500 mb-3">Attach verified voucher directly to specific General Ledger transactions and cost centers.</p>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-semibold mb-1">Target ERP Platform *</label>
+          <select id="erp-plat" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-semibold">
+            <option value="sap">SAP S/4HANA / ERP</option>
+            <option value="netsuite">Oracle NetSuite</option>
+            <option value="quickbooks">QuickBooks Online</option>
+            <option value="xero">Xero Cloud Accounting</option>
+            <option value="sage">Sage Intacct</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block font-semibold mb-1">GL Account Mapping</label>
+          <input id="erp-gl" value="6010-Office Supplies & Hardware" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-mono text-2xs" />
+        </div>
+
+        <div>
+          <label class="block font-semibold mb-1">Cost Center</label>
+          <input id="erp-cc" value="CC-IT-CORP" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-mono text-2xs" />
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 mt-4">
+        <button class="tb text-xs" onclick="closeModal()">Cancel</button>
+        <button class="tb primary text-xs" onclick="submitERPSync(${invoiceId})">Synchronize with ERP</button>
+      </div>
+    </div>
+  `);
+}
+
+async function submitERPSync(invoiceId) {
+  try {
+    const res = await apiFetch(`/accounting/invoices/${invoiceId}/erp-sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        platform: val("erp-plat"),
+        gl_account: val("erp-gl"),
+        cost_center: val("erp-cc"),
+      }),
+    });
+    closeModal();
+    toast(`Synchronized with ${res.platform.toUpperCase()}! Voucher: ${res.voucher_reference}`, "success");
+    adminTab("accounting");
+  } catch (e) {
+    toast(`ERP sync failed: ${e.message}`, "error");
   }
 }

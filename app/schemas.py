@@ -1,7 +1,7 @@
 """Pydantic request/response schemas."""
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -964,3 +964,128 @@ class SecurePortalOut(BaseModel):
     expires_at: datetime | None = None
     access_count: int
     created_at: datetime | None = None
+
+
+# =============================================================================
+# ACCOUNTING & FINANCIAL EDMS SCHEMAS
+# =============================================================================
+
+
+class PurchaseOrderCreate(BaseModel):
+    po_number: str
+    vendor_name: str
+    total_amount: float = 0.0
+    currency: str = "USD"
+    status: str = "issued"
+    line_items: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class PurchaseOrderOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    po_number: str
+    vendor_name: str
+    total_amount: float
+    currency: str
+    status: str
+    line_items: list[dict[str, Any]] | None = None
+    created_at: datetime | None = None
+
+
+class GoodsReceivedNoteCreate(BaseModel):
+    grn_number: str
+    po_number: str
+    vendor_name: str
+    received_date: datetime | None = None
+    line_items: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class GoodsReceivedNoteOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    grn_number: str
+    po_number: str
+    vendor_name: str
+    received_date: datetime | None = None
+    line_items: list[dict[str, Any]] | None = None
+    created_at: datetime | None = None
+
+
+class InvoiceRecordCreate(BaseModel):
+    invoice_number: str
+    vendor_name: str
+    vendor_tax_id: str | None = None
+    po_number: str | None = None
+    grn_number: str | None = None
+    subtotal: float = 0.0
+    tax_amount: float = 0.0
+    total_amount: float = 0.0
+    currency: str = "USD"
+    invoice_date: datetime | None = None
+    due_date: datetime | None = None
+    gl_account: str | None = None
+    cost_center: str | None = None
+    line_items: list[dict[str, Any]] = Field(default_factory=list)
+    document_id: int | None = None
+
+
+class InvoiceRecordOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    invoice_number: str
+    vendor_name: str
+    vendor_tax_id: str | None = None
+    po_number: str | None = None
+    grn_number: str | None = None
+    subtotal: float
+    tax_amount: float
+    total_amount: float
+    currency: str
+    invoice_date: datetime | None = None
+    due_date: datetime | None = None
+    gl_account: str | None = None
+    cost_center: str | None = None
+    line_items: list[dict[str, Any]] | None = None
+    matching_status: str
+    matching_notes: str | None = None
+    payment_status: str
+    document_id: int | None = None
+    is_duplicate: bool
+    duplicate_of_id: int | None = None
+    peppol_validated: bool
+    created_at: datetime | None = None
+
+
+class AuditorPortalCreate(BaseModel):
+    auditor_name: str
+    auditor_email: str
+    firm_name: str | None = None
+    sample_document_ids: list[int] = Field(default_factory=list)
+    allowed_gl_accounts: list[str] = Field(default_factory=list)
+    password: str
+    expires_in_days: int = 14
+
+
+class AuditorPortalOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    token: str
+    auditor_name: str
+    auditor_email: str
+    firm_name: str | None = None
+    sample_document_ids: list[int] | None = None
+    allowed_gl_accounts: list[str] | None = None
+    expires_at: datetime | None = None
+    access_count: int
+    created_at: datetime | None = None
+
+
+class ERPIntegrationCreate(BaseModel):
+    platform: str  # sap, netsuite, quickbooks, xero, sage
+    company_id: str | None = None
+    endpoint_url: str | None = None
+    config_json: dict[str, Any] = Field(default_factory=dict)

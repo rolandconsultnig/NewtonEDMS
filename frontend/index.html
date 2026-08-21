@@ -210,6 +210,14 @@
           <button class="admin-item" data-admin="legal-compare" onclick="openLegalCompareModal()">Redlining &amp; Diff</button>
         </div>
         <div class="admin-block">
+          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-file-invoice-dollar text-emerald-500"></i> Accounting &amp; AP</button>
+          <button class="admin-item" data-admin="accounting" onclick="adminTab('accounting')">Invoices &amp; 3-Way Match</button>
+          <button class="admin-item" data-admin="accounting-po" onclick="openAccountingPOModal()">Purchase Orders &amp; GRNs</button>
+          <button class="admin-item" data-admin="accounting-batch" onclick="openBatchBarcodeModal()">Barcode Batch Split</button>
+          <button class="admin-item" data-admin="accounting-peppol" onclick="openPeppolModal()">PEPPOL E-Invoicing</button>
+          <button class="admin-item" data-admin="accounting-audit" onclick="openAuditorPortalModal()">Auditor Portals</button>
+        </div>
+        <div class="admin-block">
           <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-caret-down"></i> Ingest</button>
           <button class="admin-item" data-admin="imports" onclick="adminTab('imports')">Hot folders</button>
           <button class="admin-item" data-admin="mailbox-tasks" onclick="adminTab('mailbox-tasks')">Mailbox import</button>

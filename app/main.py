@@ -19,6 +19,7 @@ from app.joex import start_worker, stop_worker
 from app.limiter import limiter
 from app.routers import audit as audit_router
 from app.routers import (
+    accounting,
     auth,
     collab,
     documents,
@@ -161,6 +162,7 @@ app.include_router(extras.router)
 app.include_router(wopi.router)
 app.include_router(office.router)
 app.include_router(legal.router)
+app.include_router(accounting.router)
 app.include_router(newton.router)
 app.include_router(newton.open_router)
 app.include_router(audit_router.router)
