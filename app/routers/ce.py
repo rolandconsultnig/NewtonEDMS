@@ -910,14 +910,17 @@ def rebuild_index(db: Session = Depends(get_db), user: User = Depends(require_ro
 
 @router.get("/index/stats")
 def index_stats(user: User = Depends(require_role("superadmin", "admin"))):
-    from whoosh import index as windex
+    try:
+        from whoosh import index as windex
 
-    path = STORAGE_DIR / "whoosh_index"
-    if not path.exists() or not windex.exists_in(path):
-        return {"docs": 0, "path": str(path)}
-    ix = windex.open_dir(path)
-    with ix.searcher() as s:
-        return {"docs": s.doc_count(), "path": str(path)}
+        path = STORAGE_DIR / "whoosh_index"
+        if not path.exists() or not windex.exists_in(path):
+            return {"docs": 0, "path": str(path)}
+        ix = windex.open_dir(path)
+        with ix.searcher() as s:
+            return {"docs": s.doc_count(), "path": str(path)}
+    except (ImportError, ModuleNotFoundError):
+        return {"docs": 0, "path": str(STORAGE_DIR / "whoosh_index"), "engine": "db_fallback"}
 
 
 @router.get("/stores")

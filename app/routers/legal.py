@@ -279,6 +279,7 @@ def api_create_template(
 
 
 @router.post("/assembly/generate")
+@router.post("/assembly")
 def api_assemble_document(
     payload: LegalAssemblyRequest,
     db: Session = Depends(get_db),
