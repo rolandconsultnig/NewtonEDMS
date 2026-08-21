@@ -26,6 +26,7 @@ from app.routers import (
     folders,
     groups,
     ingestion,
+    legal,
     newton,
     office,
     system,
@@ -159,6 +160,7 @@ app.include_router(workflow.router)
 app.include_router(extras.router)
 app.include_router(wopi.router)
 app.include_router(office.router)
+app.include_router(legal.router)
 app.include_router(newton.router)
 app.include_router(newton.open_router)
 app.include_router(audit_router.router)

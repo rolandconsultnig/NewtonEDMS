@@ -749,3 +749,218 @@ class TotpSetupOut(BaseModel):
 
 class ThemeUpdate(BaseModel):
     theme: Literal["light", "dark"]
+
+
+# =============================================================================
+# Legal Practice Management & Corporate Legal Schemas
+# =============================================================================
+
+
+class MatterCreate(BaseModel):
+    matter_number: str
+    title: str
+    client_name: str
+    client_id: str | None = None
+    practice_area: str = "General Litigation"
+    lead_attorney_id: int | None = None
+    court_name: str | None = None
+    case_caption: str | None = None
+    judge_name: str | None = None
+    opposing_counsel: str | None = None
+    billing_code: str | None = None
+    description: str | None = None
+    metadata_json: dict | None = None
+
+
+class MatterUpdate(BaseModel):
+    title: str | None = None
+    client_name: str | None = None
+    client_id: str | None = None
+    practice_area: str | None = None
+    lead_attorney_id: int | None = None
+    status: str | None = None
+    court_name: str | None = None
+    case_caption: str | None = None
+    judge_name: str | None = None
+    opposing_counsel: str | None = None
+    billing_code: str | None = None
+    description: str | None = None
+    metadata_json: dict | None = None
+
+
+class MatterOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    matter_number: str
+    title: str
+    client_name: str
+    client_id: str | None = None
+    practice_area: str
+    lead_attorney_id: int | None = None
+    status: str
+    billing_code: str | None = None
+    court_name: str | None = None
+    case_caption: str | None = None
+    judge_name: str | None = None
+    opposing_counsel: str | None = None
+    description: str | None = None
+    metadata_json: dict | None = None
+    created_by: int
+    created_at: datetime | None = None
+    closed_at: datetime | None = None
+
+
+class MatterDocumentAttach(BaseModel):
+    document_id: int
+    category: str = "pleading"  # pleading, discovery, correspondence, contract, exhibit, court_order, memo
+    confidentiality: str = "confidential"
+    bates_range: str | None = None
+    notes: str | None = None
+    pinned: bool = False
+
+
+class MatterDocumentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    matter_id: int
+    document_id: int
+    category: str
+    bates_range: str | None = None
+    confidentiality: str
+    pinned: bool
+    notes: str | None = None
+    added_by: int
+    added_at: datetime | None = None
+
+
+class EthicalWallCreate(BaseModel):
+    matter_id: int
+    walled_user_ids: list[int]
+    reason: str
+    walled_group_ids: list[int] | None = None
+    client_name: str | None = None
+
+
+class EthicalWallOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    matter_id: int
+    client_name: str | None = None
+    walled_user_ids: list[int] | None = None
+    walled_group_ids: list[int] | None = None
+    reason: str
+    active: bool
+    created_by: int
+    created_at: datetime | None = None
+
+
+class LegalTemplateCreate(BaseModel):
+    name: str
+    category: str = "contract"
+    description: str | None = None
+    content_template: str
+    fields_schema: list[dict] | None = None
+
+
+class LegalTemplateOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    category: str
+    description: str | None = None
+    content_template: str
+    fields_schema: list[dict] | None = None
+    created_by: int
+    created_at: datetime | None = None
+
+
+class LegalAssemblyRequest(BaseModel):
+    template_id: int
+    matter_id: int
+    variables: dict = {}
+    document_title: str | None = None
+    output_format: str = "pdf"
+    folder_id: int = 1
+
+
+class BatesApplyRequest(BaseModel):
+    matter_id: int
+    document_ids: list[int]
+    production_set: str = "PROD-001"
+    prefix: str = "PLTF"
+    suffix: str = ""
+    start_number: int = 1
+    pad_length: int = 6
+    position: str = "bottom-right"
+    disclaimer_text: str | None = None
+
+
+class BatesProductionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    matter_id: int
+    production_set: str
+    prefix: str
+    suffix: str | None = None
+    start_number: int
+    end_number: int
+    total_pages: int
+    position: str
+    disclaimer_text: str | None = None
+    document_ids: list[int] | None = None
+    created_by: int
+    created_at: datetime | None = None
+
+
+class LegalCompareRequest(BaseModel):
+    doc_id_a: int
+    doc_id_b: int | None = None
+    version_num_a: int | None = None
+    version_num_b: int | None = None
+
+
+class PermanentRedactRequest(BaseModel):
+    patterns: list[str] | None = None
+    builtin_presets: list[str] | None = None
+    bounding_boxes: list[dict] | None = None
+    save_as_new: bool = True
+
+
+class EFilingPackageRequest(BaseModel):
+    matter_id: int
+    pleading_doc_id: int
+    exhibit_doc_ids: list[int] = []
+    package_name: str | None = None
+    filing_jurisdiction: str | None = None
+
+
+class SecurePortalCreate(BaseModel):
+    matter_id: int
+    document_ids: list[int]
+    recipient_email: str
+    recipient_name: str | None = None
+    password: str | None = None
+    watermark_text: str | None = "CONFIDENTIAL FOR CLIENT REVIEW"
+    allow_download: bool = True
+    expires_in_days: int = 7
+
+
+class SecurePortalOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    token: str
+    matter_id: int
+    document_ids: list[int] | None = None
+    recipient_email: str
+    recipient_name: str | None = None
+    watermark_text: str | None = None
+    allow_download: bool
+    expires_at: datetime | None = None
+    access_count: int
+    created_at: datetime | None = None

@@ -1002,3 +1002,116 @@ class CollabOp(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     op = Column(JSON, default=dict)
     created_at = Column(DateTime, default=now)
+
+
+# =============================================================================
+# Legal Practice Management & Corporate Legal Department Models
+# =============================================================================
+
+
+class Matter(Base):
+    """Matter-centric case management container."""
+
+    __tablename__ = "matters"
+    id = Column(Integer, primary_key=True, index=True)
+    matter_number = Column(String, unique=True, index=True, nullable=False)  # e.g. MAT-2026-001
+    title = Column(String, nullable=False, index=True)
+    client_name = Column(String, nullable=False, index=True)
+    client_id = Column(String, index=True)
+    practice_area = Column(String, default="General Litigation", index=True)  # Litigation, Corporate, IP, Employment, Real Estate, Regulatory
+    lead_attorney_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    status = Column(String, default="open", index=True)  # open, pending, closed, archived
+    billing_code = Column(String)
+    court_name = Column(String)  # e.g. U.S. District Court, Southern District of NY
+    case_caption = Column(String)  # e.g. Acme Corp v. Beta LLC, Case No. 26-CV-10492
+    judge_name = Column(String)
+    opposing_counsel = Column(String)
+    description = Column(Text)
+    metadata_json = Column(JSON, default=dict)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+    closed_at = Column(DateTime)
+
+
+class MatterDocument(Base):
+    """Associates documents with a specific matter, category, and Bates tracking."""
+
+    __tablename__ = "matter_documents"
+    id = Column(Integer, primary_key=True, index=True)
+    matter_id = Column(Integer, ForeignKey("matters.id"), nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False, index=True)
+    category = Column(String, default="pleading", index=True)  # pleading, discovery, correspondence, contract, exhibit, court_order, memo, transcript
+    bates_range = Column(String)  # e.g. PLTF-000001 - PLTF-000045
+    confidentiality = Column(String, default="confidential")  # public, confidential, attorneys_eyes_only, highly_confidential
+    pinned = Column(Boolean, default=False)
+    notes = Column(Text)
+    added_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    added_at = Column(DateTime, default=now)
+
+
+class EthicalWall(Base):
+    """Conflict-of-interest ethical walls isolating attorneys/staff from specific matters."""
+
+    __tablename__ = "ethical_walls"
+    id = Column(Integer, primary_key=True, index=True)
+    matter_id = Column(Integer, ForeignKey("matters.id"), nullable=False, index=True)
+    client_name = Column(String, index=True)
+    walled_user_ids = Column(JSON, default=list)  # List of user IDs barred from access
+    walled_group_ids = Column(JSON, default=list)  # List of group IDs barred
+    reason = Column(Text, nullable=False)  # Prior adverse representation / lateral hire conflict
+    active = Column(Boolean, default=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class LegalTemplate(Base):
+    """Master document assembly templates with dynamic placeholders."""
+
+    __tablename__ = "legal_templates"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False)
+    category = Column(String, default="contract")  # contract, pleading, nda, discovery, brief, letter
+    description = Column(String)
+    content_template = Column(Text, nullable=False)  # Markdown / HTML template with {{placeholders}}
+    fields_schema = Column(JSON, default=list)  # Required and optional input variables
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class BatesProduction(Base):
+    """Tracks discovery document productions stamped with sequential Bates numbers."""
+
+    __tablename__ = "bates_productions"
+    id = Column(Integer, primary_key=True, index=True)
+    matter_id = Column(Integer, ForeignKey("matters.id"), nullable=False, index=True)
+    production_set = Column(String, nullable=False)  # e.g. PROD-001-VOL1
+    prefix = Column(String, default="PLTF")
+    suffix = Column(String)
+    start_number = Column(Integer, default=1)
+    end_number = Column(Integer, default=1)
+    total_pages = Column(Integer, default=0)
+    position = Column(String, default="bottom-right")  # bottom-right, bottom-center, top-right
+    disclaimer_text = Column(String)  # e.g. CONFIDENTIAL - ATTORNEYS' EYES ONLY
+    document_ids = Column(JSON, default=list)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class SecureExtranetPortal(Base):
+    """Time-limited, encrypted client/co-counsel extranet share."""
+
+    __tablename__ = "secure_extranet_portals"
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, unique=True, index=True, nullable=False)
+    matter_id = Column(Integer, ForeignKey("matters.id"), nullable=False, index=True)
+    document_ids = Column(JSON, default=list)
+    recipient_email = Column(String, nullable=False)
+    recipient_name = Column(String)
+    password_hash = Column(String)
+    watermark_text = Column(String)  # e.g. CONFIDENTIAL - FOR CLIENT REVIEW ONLY
+    allow_download = Column(Boolean, default=True)
+    expires_at = Column(DateTime, nullable=True)
+    access_count = Column(Integer, default=0)
+    last_accessed_at = Column(DateTime)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)

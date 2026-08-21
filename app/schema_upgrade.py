@@ -99,6 +99,7 @@ _NEW_COLUMNS: dict[str, dict[str, str]] = {
         "thumbnail_path": "VARCHAR",
         "legal_hold": "BOOLEAN DEFAULT 0",
         "case_id": "INTEGER",
+        "matter_id": "INTEGER",
         "collab_rev": "INTEGER DEFAULT 0",
         "collective_id": "INTEGER",
     },
@@ -179,9 +180,6 @@ _NEW_COLUMNS: dict[str, dict[str, str]] = {
     },
     "stores": {
         "config": "JSON",
-    },
-    "share_links": {
-        "kind": "VARCHAR DEFAULT 'download'",
     },
     "comments": {
         "author_name": "VARCHAR",

@@ -43,6 +43,8 @@ def _validated_steps(raw_steps) -> list[WorkflowStep]:
     for step in steps:
         if not step.name or not step.name.strip():
             raise HTTPException(status_code=400, detail="Every workflow step needs a name")
+        if not step.assignee_id and not step.assignee_role:
+            raise HTTPException(status_code=400, detail="Every workflow step needs an assignee_id or assignee_role")
     return steps
 
 

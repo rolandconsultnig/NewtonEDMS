@@ -198,7 +198,8 @@ def start_workflow(
                         _spawn_task(db, instance, 0, node.name, nid, assignee, routing, sla, template.form_schema)
     elif steps:
         step0 = steps[0] if isinstance(steps[0], dict) else {"name": str(steps[0])}
-        sla = (step0.get("due_days", 0) * 24) or template.sla_hours or 24
+        due_d = step0.get("due_days") or 0
+        sla = (due_d * 24) or (template.sla_hours or 24)
         assignees = _resolve_assignees(db, step0)
         for assignee in assignees:
             _spawn_task(db, instance, 0, step0.get("name", "Review Step 1"), "step_0", assignee, routing, sla, step0.get("form_schema") or template.form_schema)
