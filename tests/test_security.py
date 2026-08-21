@@ -48,7 +48,7 @@ def test_session_probe_returns_user_when_logged_in(client):
 def test_favicon_is_served(client):
     resp = client.get("/favicon.ico")
     assert resp.status_code == 200
-    assert "image/svg" in resp.headers.get("content-type", "")
+    assert any(t in resp.headers.get("content-type", "") for t in ["image/x-icon", "image/vnd.microsoft.icon", "image/svg", "image/png"])
 
 
 def test_invalid_token_is_unauthorized(client):

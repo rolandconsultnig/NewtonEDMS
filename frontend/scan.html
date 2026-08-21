@@ -3,10 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NewtonEDMS scanner</title>
+  <title>NewtonEDMS Scanner</title>
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png" />
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
+
+  <meta property="og:title" content="NewtonEDMS — Document Scanner" />
+  <meta property="og:image" content="/static/og-image.png" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="/static/og-image.png" />
+
   <link rel="stylesheet" href="/static/skin.css?v=2" />
 </head>
 <body class="work-pad" style="max-width:40rem;margin:2rem auto">
+  <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+    <img src="/static/logo.png" alt="NewtonEDMS" style="height:36px; width:auto; max-width:160px; object-fit:contain;" />
+  </div>
   <h1>Document scanner</h1>
   <p>Capture a page with the camera or upload a scan. Files are ingested into the selected folder and OCR-processed.</p>
   <label>Folder id <input id="folder" type="number" value="1" /></label>

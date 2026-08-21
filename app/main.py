@@ -260,6 +260,9 @@ async def collab_socket(websocket, doc_id: int):
 
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
+    ico = FRONTEND_DIR / "favicon.ico"
+    if ico.exists():
+        return FileResponse(ico, media_type="image/x-icon")
     icon = FRONTEND_DIR / "favicon.svg"
     if not icon.exists():
         return HTMLResponse(status_code=404)

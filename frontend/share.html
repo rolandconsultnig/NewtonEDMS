@@ -3,15 +3,28 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>NewtonEDMS share</title>
+  <title>NewtonEDMS Share</title>
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png" />
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
   <link rel="manifest" href="/static/manifest.webmanifest" />
-  <link rel="icon" href="/static/favicon.svg" />
+
+  <meta property="og:title" content="NewtonEDMS — Secure Share" />
+  <meta property="og:image" content="/static/og-image.png" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="/static/og-image.png" />
+
   <style>
     body { font-family: sans-serif; max-width: 28rem; margin: 2rem auto; padding: 1rem; }
     input, button, select { display: block; width: 100%; margin: .5rem 0; padding: .6rem; }
   </style>
 </head>
 <body>
+  <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+    <img src="/static/logo.png" alt="NewtonEDMS" style="height:36px; width:auto; max-width:160px; object-fit:contain;" />
+  </div>
   <h1>NewtonEDMS</h1>
   <p>Share / upload to an open source URL.</p>
   <label>Source token</label>
