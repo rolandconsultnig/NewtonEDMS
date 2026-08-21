@@ -1195,3 +1195,158 @@ class ClaimPortalShareOut(BaseModel):
     expires_at: datetime | None = None
     access_count: int
     created_at: datetime | None = None
+
+
+# =============================================================================
+# HEALTHCARE & CLINICAL EDMS SCHEMAS
+# =============================================================================
+
+
+class PatientCreate(BaseModel):
+    mrn: str
+    first_name: str
+    last_name: str
+    dob: datetime
+    gender: str = "U"
+    blood_type: str | None = None
+    primary_physician: str | None = None
+    insurance_id: str | None = None
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class PatientOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    mrn: str
+    first_name: str
+    last_name: str
+    dob: datetime
+    gender: str
+    blood_type: str | None = None
+    primary_physician: str | None = None
+    insurance_id: str | None = None
+    is_active: bool
+    created_at: datetime | None = None
+
+
+class PatientEncounterCreate(BaseModel):
+    encounter_number: str
+    patient_id: int
+    encounter_type: str = "inpatient"
+    admission_date: datetime | None = None
+    department: str | None = None
+    attending_physician: str | None = None
+    chief_complaint: str | None = None
+
+
+class PatientEncounterOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    encounter_number: str
+    patient_id: int
+    encounter_type: str
+    admission_date: datetime
+    discharge_date: datetime | None = None
+    department: str | None = None
+    attending_physician: str | None = None
+    chief_complaint: str | None = None
+    status: str
+    created_at: datetime | None = None
+
+
+class MedicalDocumentCreate(BaseModel):
+    patient_id: int
+    encounter_id: int | None = None
+    document_id: int
+    clinical_category: str = "clinical_note"
+    sensitivity_level: str = "standard"
+    icd10_codes: list[str] = Field(default_factory=list)
+
+
+class MedicalDocumentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    patient_id: int
+    encounter_id: int | None = None
+    document_id: int
+    clinical_category: str
+    sensitivity_level: str
+    icd10_codes: list[str] | None = None
+    is_signed: bool
+    signed_by_physician: str | None = None
+    signed_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+class DicomStudyCreate(BaseModel):
+    study_instance_uid: str
+    patient_id: int
+    document_id: int
+    modality: str = "CT"
+    body_part_examined: str | None = None
+    series_count: int = 1
+    instance_count: int = 1
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class DicomStudyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    study_instance_uid: str
+    patient_id: int
+    document_id: int
+    modality: str
+    body_part_examined: str | None = None
+    series_count: int
+    instance_count: int
+    metadata_json: dict[str, Any] | None = None
+    created_at: datetime | None = None
+
+
+class BreakGlassCreate(BaseModel):
+    patient_id: int
+    document_id: int | None = None
+    emergency_rationale: str
+
+
+class BreakGlassOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    clinician_id: int
+    patient_id: int
+    document_id: int | None = None
+    emergency_rationale: str
+    workstation_ip: str | None = None
+    alert_sent: bool
+    reviewed_by_compliance: bool
+    timestamp: datetime
+
+
+class InformedConsentCreate(BaseModel):
+    patient_id: int
+    encounter_id: int | None = None
+    consent_type: str = "surgical"
+    procedure_name: str
+    signer_name: str
+    signer_relationship: str = "patient"
+    signature_data: str
+    witness_name: str | None = None
+
+
+class InformedConsentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    patient_id: int
+    encounter_id: int | None = None
+    consent_type: str
+    procedure_name: str
+    signer_name: str
+    signer_relationship: str
+    witness_name: str | None = None
+    signed_at: datetime

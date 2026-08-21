@@ -29,6 +29,7 @@ from app.routers import (
     ingestion,
     insurance,
     legal,
+    medical,
     newton,
     office,
     system,
@@ -165,6 +166,7 @@ app.include_router(office.router)
 app.include_router(legal.router)
 app.include_router(accounting.router)
 app.include_router(insurance.router)
+app.include_router(medical.router)
 app.include_router(newton.router)
 app.include_router(newton.open_router)
 app.include_router(audit_router.router)

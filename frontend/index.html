@@ -225,6 +225,14 @@
           <button class="admin-item" data-admin="insurance-portals" onclick="openClaimPortalModal()">Adjuster Portals</button>
         </div>
         <div class="admin-block">
+          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-notes-medical text-sky-500"></i> Healthcare &amp; EHR</button>
+          <button class="admin-item" data-admin="medical" onclick="adminTab('medical')">Master Patient Index</button>
+          <button class="admin-item" data-admin="medical-dicom" onclick="openDicomViewerModal()">DICOM &amp; PACS Imaging</button>
+          <button class="admin-item" data-admin="medical-hl7" onclick="openHL7StudioModal()">HL7 &amp; FHIR Studio</button>
+          <button class="admin-item" data-admin="medical-consent" onclick="openInformedConsentModal()">Informed Consents</button>
+          <button class="admin-item" data-admin="medical-bg" onclick="openBreakGlassModal()">Emergency Override</button>
+        </div>
+        <div class="admin-block">
           <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-caret-down"></i> Ingest</button>
           <button class="admin-item" data-admin="imports" onclick="adminTab('imports')">Hot folders</button>
           <button class="admin-item" data-admin="mailbox-tasks" onclick="adminTab('mailbox-tasks')">Mailbox import</button>

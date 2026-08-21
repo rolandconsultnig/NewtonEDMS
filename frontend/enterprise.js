@@ -1,7 +1,7 @@
 /* NewtonEDMS enterprise UI: workflow canvas, rules, compliance, RAG, connectors, ProcessMaker studio. */
 const ENT_TABS = new Set([
   "rules", "forms", "zones", "holds", "cases", "bpmn", "rag", "connectors",
-  "cluster", "compliance", "security-policy", "report-builder", "office", "workflows", "legal", "accounting", "insurance",
+  "cluster", "compliance", "security-policy", "report-builder", "office", "workflows", "legal", "accounting", "insurance", "medical",
 ]);
 
 const _entAdmin = typeof adminTab === "function" ? adminTab : null;
@@ -323,6 +323,8 @@ async function renderEntTab(tab) {
     await renderAccountingTab(content);
   } else if (tab === "insurance") {
     await renderInsuranceTab(content);
+  } else if (tab === "medical") {
+    await renderMedicalTab(content);
   }
 }
 
@@ -3088,5 +3090,553 @@ async function submitClaimPortal() {
     adminTab("insurance");
   } catch (e) {
     toast(`Portal generation failed: ${e.message}`, "error");
+  }
+}
+
+/* =============================================================================
+   HEALTHCARE & CLINICAL EDMS UI (MPI, DICOM, HL7/FHIR, BREAK-GLASS, CONSENT)
+   ============================================================================= */
+
+async function renderMedicalTab(content) {
+  content.innerHTML = `<div class="p-4 text-xs text-slate-400"><i class="fa-solid fa-spinner fa-spin"></i> Loading Healthcare &amp; Clinical Center…</div>`;
+  try {
+    const patients = (await apiFetch("/medical/patients")) || [];
+    const encounters = (await apiFetch("/medical/encounters")) || [];
+    const dicomStudies = (await apiFetch("/medical/dicom")) || [];
+    const breakGlassEvents = (await apiFetch("/medical/break-glass/events").catch(() => [])) || [];
+
+    const activeAdmissions = encounters.filter((e) => e.status === "admitted").length;
+
+    content.innerHTML = `
+      <div style="padding:4px">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div>
+            <h3 class="font-bold text-base mb-0.5"><i class="fa-solid fa-notes-medical text-sky-600"></i> Healthcare EHR &amp; Clinical EDMS Hub</h3>
+            <p class="text-xs text-slate-500">Master Patient Index (MPI), DICOM/PACS diagnostic imaging, HL7/FHIR interoperability, bedside digital consents, and emergency Break-Glass overrides.</p>
+          </div>
+          <div class="flex gap-2 flex-wrap">
+            <button class="tb text-xs" onclick="openDicomViewerModal()"><i class="fa-solid fa-x-ray text-indigo-500"></i> DICOM &amp; PACS</button>
+            <button class="tb text-xs" onclick="openHL7StudioModal()"><i class="fa-solid fa-network-wired text-emerald-500"></i> HL7 &amp; FHIR Studio</button>
+            <button class="tb text-xs" onclick="openInformedConsentModal()"><i class="fa-solid fa-file-signature text-purple-500"></i> Bedside Consents</button>
+            <button class="tb text-xs bg-rose-50 text-rose-700 border-rose-200" onclick="openBreakGlassModal()"><i class="fa-solid fa-triangle-exclamation text-rose-600"></i> Emergency Override</button>
+            <button class="tb primary text-xs" onclick="openNewPatientModal()"><i class="fa-solid fa-user-plus"></i> Register Patient</button>
+          </div>
+        </div>
+
+        <!-- Metrics Cards -->
+        <div class="grid grid-cols-4 gap-3 mb-4">
+          <div class="border rounded-lg p-3 bg-slate-50 dark:bg-slate-800">
+            <div class="text-2xs uppercase text-slate-400 font-bold mb-1">Master Patient Index (MPI)</div>
+            <div class="text-xl font-bold text-slate-800 dark:text-slate-100">${patients.length}</div>
+            <div class="text-2xs text-slate-500 mt-1">Unique MRN patient records</div>
+          </div>
+          <div class="border rounded-lg p-3 bg-sky-50 dark:bg-sky-950/30 border-sky-200 dark:border-sky-800">
+            <div class="text-2xs uppercase text-sky-600 dark:text-sky-400 font-bold mb-1">Active Inpatient Admissions</div>
+            <div class="text-xl font-bold text-sky-700 dark:text-sky-300">${activeAdmissions}</div>
+            <div class="text-2xs text-sky-600 dark:text-sky-400 mt-1">Bedside encounter active</div>
+          </div>
+          <div class="border rounded-lg p-3 bg-indigo-50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800">
+            <div class="text-2xs uppercase text-indigo-600 dark:text-indigo-400 font-bold mb-1">DICOM Diagnostic Studies</div>
+            <div class="text-xl font-bold text-indigo-700 dark:text-indigo-300">${dicomStudies.length}</div>
+            <div class="text-2xs text-indigo-600 dark:text-indigo-400 mt-1">CT, MRI, X-Ray studies stored</div>
+          </div>
+          <div class="border rounded-lg p-3 bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800">
+            <div class="text-2xs uppercase text-rose-600 dark:text-rose-400 font-bold mb-1">Emergency Break-Glass Overrides</div>
+            <div class="text-xl font-bold text-rose-700 dark:text-rose-300">${breakGlassEvents.length}</div>
+            <div class="text-2xs text-rose-600 dark:text-rose-400 mt-1">Audited emergency events</div>
+          </div>
+        </div>
+
+        <!-- Master Patient Index Table -->
+        <div class="border rounded-lg overflow-hidden bg-white dark:bg-slate-800 shadow-sm">
+          <div class="p-3 bg-slate-50 dark:bg-slate-800/80 border-b flex items-center justify-between flex-wrap gap-2">
+            <strong class="text-xs font-semibold">Master Patient Index (MPI) &amp; Medical Record Register</strong>
+            <span class="text-2xs text-slate-400"><i class="fa-solid fa-lock"></i> HIPAA &amp; GDPR ABAC Security Active</span>
+          </div>
+
+          <table class="w-full text-xs text-left border-collapse">
+            <thead class="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold border-b">
+              <tr>
+                <th class="p-2.5">MRN #</th>
+                <th class="p-2.5">Patient Name</th>
+                <th class="p-2.5">DOB &amp; Gender</th>
+                <th class="p-2.5">Blood Type</th>
+                <th class="p-2.5">Primary Physician</th>
+                <th class="p-2.5">Insurance / Payer</th>
+                <th class="p-2.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
+              ${patients.map((p) => renderPatientRow(p)).join("") || `
+                <tr>
+                  <td colspan="7" class="p-8 text-center text-slate-400">
+                    <i class="fa-solid fa-hospital-user text-3xl mb-2 text-slate-300 block"></i>
+                    No patient records registered.<br>
+                    <button class="tb primary text-xs mt-3" onclick="openNewPatientModal()"><i class="fa-solid fa-plus"></i> Register First Patient</button>
+                  </td>
+                </tr>
+              `}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } catch (e) {
+    content.innerHTML = `<div class="p-4 text-xs text-red-500">Failed to load medical suite: ${e.message}</div>`;
+  }
+}
+
+function renderPatientRow(p) {
+  const age = p.dob ? Math.floor((new Date() - new Date(p.dob)) / (365.25 * 24 * 60 * 60 * 1000)) : 'N/A';
+  return `
+    <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+      <td class="p-2.5 font-mono font-bold text-sky-700 dark:text-sky-400">
+        ${esc(p.mrn)}
+      </td>
+      <td class="p-2.5 font-semibold text-slate-900 dark:text-slate-100">
+        ${esc(p.first_name)} ${esc(p.last_name)}
+      </td>
+      <td class="p-2.5">
+        <div>${p.dob ? p.dob.slice(0, 10) : 'N/A'} <span class="text-slate-400">(${age} yrs)</span></div>
+        <span class="text-2xs font-mono uppercase text-slate-500">Gender: ${esc(p.gender)}</span>
+      </td>
+      <td class="p-2.5 font-mono">
+        <span class="px-2 py-0.5 rounded text-2xs font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400">${esc(p.blood_type || 'Unknown')}</span>
+      </td>
+      <td class="p-2.5 text-slate-700 dark:text-slate-300">
+        ${esc(p.primary_physician || 'Attending Staff')}
+      </td>
+      <td class="p-2.5 text-2xs font-mono text-slate-500">
+        ${esc(p.insurance_id || 'Self-Pay / Uninsured')}
+      </td>
+      <td class="p-2.5 text-right space-x-1">
+        <button class="tb text-2xs" onclick="openPatientChartWorkspace(${p.id})"><i class="fa-solid fa-notes-medical text-sky-500"></i> Patient Chart</button>
+        <button class="tb text-2xs" onclick="openInformedConsentModal(${p.id})"><i class="fa-solid fa-file-signature text-purple-500"></i> Consent</button>
+      </td>
+    </tr>
+  `;
+}
+
+/* =============================================================================
+   HEALTHCARE MODALS & WORKSPACES
+   ============================================================================= */
+
+async function openNewPatientModal() {
+  showModal(`
+    <div class="p-4" style="max-width:600px">
+      <h3 class="font-bold text-base mb-2"><i class="fa-solid fa-user-plus text-sky-600"></i> Register New Patient into Master Index (MPI)</h3>
+      <p class="text-xs text-slate-500 mb-3">Generates unique MRN and initializes Electronic Health Record (EHR) file with HIPAA compliance.</p>
+
+      <div class="space-y-3 text-xs">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold mb-1">Medical Record Number (MRN) *</label>
+            <input id="pat-mrn" value="MRN-2026-${Math.floor(10000 + Math.random() * 90000)}" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-mono font-bold" />
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Date of Birth (DOB) *</label>
+            <input id="pat-dob" type="date" value="1990-01-01" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold mb-1">First Name *</label>
+            <input id="pat-fn" placeholder="e.g. Eleanor" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Last Name *</label>
+            <input id="pat-ln" placeholder="e.g. Vance" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3">
+          <div>
+            <label class="block font-semibold mb-1">Gender</label>
+            <select id="pat-gender" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900">
+              <option value="F">Female</option>
+              <option value="M">Male</option>
+              <option value="O">Other</option>
+              <option value="U">Unknown</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Blood Type</label>
+            <select id="pat-blood" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-mono">
+              <option value="O+">O+</option>
+              <option value="O-">O-</option>
+              <option value="A+">A+</option>
+              <option value="A-">A-</option>
+              <option value="B+">B+</option>
+              <option value="B-">B-</option>
+              <option value="AB+">AB+</option>
+              <option value="AB-">AB-</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Insurance / Payer ID</label>
+            <input id="pat-ins" placeholder="e.g. BCBS-9988" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-mono" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold mb-1">Primary Attending Physician</label>
+          <input id="pat-doc" placeholder="e.g. Dr. Allison Cameron" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 mt-4">
+        <button class="tb text-xs" onclick="closeModal()">Cancel</button>
+        <button class="tb primary text-xs" onclick="submitNewPatient()">Register Patient</button>
+      </div>
+    </div>
+  `);
+}
+
+async function submitNewPatient() {
+  const mrn = val("pat-mrn");
+  const fn = val("pat-fn");
+  const ln = val("pat-ln");
+  const dob = val("pat-dob");
+
+  if (!mrn || !fn || !ln || !dob) {
+    toast("MRN, First Name, Last Name, and DOB are required.", "error");
+    return;
+  }
+
+  try {
+    const res = await apiFetch("/medical/patients", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mrn,
+        first_name: fn,
+        last_name: ln,
+        dob: `${dob}T00:00:00`,
+        gender: val("pat-gender"),
+        blood_type: val("pat-blood"),
+        primary_physician: val("pat-doc") || undefined,
+        insurance_id: val("pat-ins") || undefined,
+      }),
+    });
+    closeModal();
+    toast(`Patient ${res.first_name} ${res.last_name} (MRN: ${res.mrn}) registered!`, "success");
+    adminTab("medical");
+  } catch (e) {
+    toast(`Registration failed: ${e.message}`, "error");
+  }
+}
+
+async function openPatientChartWorkspace(patientId) {
+  const patient = await apiFetch(`/medical/patients/${patientId}`).catch(() => null);
+  const encounters = (await apiFetch(`/medical/encounters?patient_id=${patientId}`).catch(() => [])) || [];
+  const docs = (await apiFetch(`/medical/patients/${patientId}/documents`).catch(() => [])) || [];
+
+  if (!patient) {
+    toast("Failed to load patient chart.", "error");
+    return;
+  }
+
+  showModal(`
+    <div class="p-4" style="max-width:850px">
+      <!-- Patient Banner -->
+      <div class="flex items-center justify-between mb-3 border-b pb-2">
+        <div>
+          <h3 class="font-bold text-base"><i class="fa-solid fa-id-card-clip text-sky-600"></i> EHR Chart: ${esc(patient.first_name)} ${esc(patient.last_name)}</h3>
+          <span class="text-xs text-slate-500 font-mono">MRN: <strong>${esc(patient.mrn)}</strong> · DOB: ${patient.dob ? patient.dob.slice(0, 10) : ''} · Blood: <strong>${esc(patient.blood_type || 'N/A')}</strong></span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="tb text-xs bg-rose-50 text-rose-700 border-rose-200" onclick="openBreakGlassModal(${patient.id})"><i class="fa-solid fa-triangle-exclamation text-rose-600"></i> Break-Glass Override</button>
+          <button class="tb primary text-xs" onclick="openInformedConsentModal(${patient.id})"><i class="fa-solid fa-file-signature"></i> e-Consent</button>
+        </div>
+      </div>
+
+      <!-- Encounters Section -->
+      <div class="mb-4">
+        <h4 class="font-bold text-xs mb-2"><i class="fa-solid fa-hospital-user text-blue-500"></i> Clinical Encounters &amp; Admissions (${encounters.length})</h4>
+        <div class="space-y-1.5 max-h-36 overflow-y-auto">
+          ${encounters.map((enc) => `
+            <div class="p-2 border rounded bg-slate-50 dark:bg-slate-900 flex items-center justify-between text-xs">
+              <div>
+                <strong class="font-mono text-sky-600">${esc(enc.encounter_number)}</strong>
+                <span class="ml-2 font-semibold">${esc(enc.department || 'General')} (${esc(enc.encounter_type).toUpperCase()})</span>
+                <div class="text-2xs text-slate-400">${esc(enc.chief_complaint || 'Routine Encounter')} · Attending: ${esc(enc.attending_physician || 'N/A')}</div>
+              </div>
+              <span class="px-2 py-0.5 rounded text-2xs font-semibold uppercase ${enc.status === 'admitted' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">${esc(enc.status)}</span>
+            </div>
+          `).join("") || '<div class="text-xs text-slate-400 p-2 border rounded text-center">No active encounters.</div>'}
+        </div>
+      </div>
+
+      <!-- Clinical Documents with ABAC Sensitivities -->
+      <h4 class="font-bold text-xs mb-2"><i class="fa-solid fa-file-medical text-emerald-500"></i> Clinical Documents &amp; Diagnostic Records (${docs.length})</h4>
+      <div class="space-y-2 max-h-56 overflow-y-auto">
+        ${docs.map((d) => `
+          <div class="p-2.5 border rounded-lg ${d.accessible ? 'bg-white dark:bg-slate-800' : 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200'} flex items-center justify-between text-xs">
+            <div>
+              <div class="font-semibold flex items-center gap-1.5">
+                <span>${esc(d.title)}</span>
+                <span class="px-1.5 py-0.5 rounded text-3xs font-bold uppercase ${d.sensitivity_level === 'psychiatric' ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-600'}">${esc(d.sensitivity_level)}</span>
+                ${d.is_signed ? '<span class="px-1.5 py-0.5 rounded text-3xs font-bold uppercase bg-emerald-100 text-emerald-800">SIGNED</span>' : ''}
+              </div>
+              <div class="text-2xs text-slate-400 font-mono">Category: ${esc(d.clinical_category)} ${d.restriction_reason ? `· <span class="text-rose-600 font-semibold">${esc(d.restriction_reason)}</span>` : ''}</div>
+            </div>
+            <div>
+              ${!d.accessible ? `<button class="tb text-2xs bg-rose-600 text-white" onclick="openBreakGlassModal(${patient.id}, ${d.document_id})"><i class="fa-solid fa-unlock"></i> Break-Glass</button>` : `<a href="/api/medical/fhir/DocumentReference/${d.id}" target="_blank" class="tb text-2xs"><i class="fa-solid fa-code text-sky-500"></i> FHIR JSON</a>`}
+            </div>
+          </div>
+        `).join("") || '<div class="text-xs text-slate-400 p-4 text-center border rounded">No clinical documents attached.</div>'}
+      </div>
+
+      <div class="flex justify-end gap-2 mt-4">
+        <button class="tb text-xs" onclick="closeModal()">Close</button>
+      </div>
+    </div>
+  `);
+}
+
+async function openBreakGlassModal(patientId, docId) {
+  const patients = (await apiFetch("/medical/patients")) || [];
+  showModal(`
+    <div class="p-4" style="max-width:550px">
+      <div class="flex items-center gap-2 mb-2 text-rose-600">
+        <i class="fa-solid fa-triangle-exclamation text-xl"></i>
+        <h3 class="font-bold text-base">Emergency Clinical "Break-Glass" Access Override</h3>
+      </div>
+      <p class="text-xs text-slate-600 dark:text-slate-300 mb-3">
+        <strong class="text-rose-600">WARNING:</strong> This action immediately overrides HIPAA/GDPR privacy barriers to unlock restricted clinical records.
+        A permanent, immutable security alert will be dispatched to the Hospital Compliance &amp; Security Officer.
+      </p>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-semibold mb-1">Target Patient *</label>
+          <select id="bg-patient" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-semibold">
+            ${patients.map((p) => `<option value="${p.id}" ${patientId === p.id ? 'selected' : ''}>${esc(p.mrn)} - ${esc(p.first_name)} ${esc(p.last_name)}</option>`).join("")}
+          </select>
+        </div>
+
+        <div>
+          <label class="block font-semibold mb-1">Mandatory Acute Clinical Rationale *</label>
+          <textarea id="bg-rationale" rows="3" placeholder="e.g. Code Blue / Cardiac Arrest in Trauma Bay 1. Emergency psychiatric history required for drug allergy check." class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-semibold text-rose-700"></textarea>
+          <span class="text-3xs text-slate-400 mt-0.5 block">Must be an authentic, life-threatening clinical justification.</span>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 mt-4">
+        <button class="tb text-xs" onclick="closeModal()">Cancel</button>
+        <button class="tb primary text-xs bg-rose-600 hover:bg-rose-700" onclick="submitBreakGlass(${docId || 'null'})"><i class="fa-solid fa-bolt"></i> Authorize Emergency Override</button>
+      </div>
+    </div>
+  `);
+}
+
+async function submitBreakGlass(docId) {
+  const patientId = parseInt(val("bg-patient"), 10);
+  const rationale = val("bg-rationale");
+
+  if (!patientId || !rationale || rationale.trim().length < 8) {
+    toast("Clinical rationale is mandatory for emergency Break-Glass override.", "error");
+    return;
+  }
+
+  try {
+    const res = await apiFetch("/medical/break-glass", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        patient_id: patientId,
+        document_id: docId || undefined,
+        emergency_rationale: rationale,
+      }),
+    });
+    closeModal();
+    toast(`Emergency Break-Glass override granted for Patient #${res.patient_id}! Compliance alerted.`, "success");
+    openPatientChartWorkspace(patientId);
+  } catch (e) {
+    toast(`Override failed: ${e.message}`, "error");
+  }
+}
+
+async function openDicomViewerModal() {
+  const studies = (await apiFetch("/medical/dicom")) || [];
+  showModal(`
+    <div class="p-4" style="max-width:700px">
+      <h3 class="font-bold text-base mb-2"><i class="fa-solid fa-x-ray text-indigo-600"></i> DICOM &amp; PACS Medical Imaging Portfolio</h3>
+      <p class="text-xs text-slate-500 mb-3">Diagnostic medical imaging studies (CT, MRI, X-Ray, Ultrasound) cross-referenced to EHR Patient MRN.</p>
+
+      <div class="space-y-2 max-h-56 overflow-y-auto mb-4 text-xs">
+        ${studies.map((s) => `
+          <div class="p-2.5 border rounded-lg bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
+            <div>
+              <div class="font-bold font-mono text-slate-800 dark:text-slate-200"><span class="px-1.5 py-0.5 rounded text-3xs font-bold uppercase bg-indigo-100 text-indigo-800">${esc(s.modality)}</span> ${esc(s.body_part_examined || 'STUDY')} - ${esc(s.study_instance_uid.slice(0, 24))}…</div>
+              <div class="text-2xs text-slate-400">Patient ID #${s.patient_id} · Instances: ${s.instance_count} slices</div>
+            </div>
+            <span class="text-2xs font-mono text-slate-400">${s.created_at ? s.created_at.slice(0, 10) : ''}</span>
+          </div>
+        `).join("") || '<div class="text-slate-400 p-4 text-center border rounded">No DICOM studies stored yet.</div>'}
+      </div>
+
+      <div class="flex justify-end gap-2">
+        <button class="tb text-xs" onclick="closeModal()">Close</button>
+      </div>
+    </div>
+  `);
+}
+
+async function openHL7StudioModal() {
+  showModal(`
+    <div class="p-4" style="max-width:650px">
+      <h3 class="font-bold text-base mb-2"><i class="fa-solid fa-network-wired text-emerald-600"></i> HL7 (v2.x) &amp; FHIR R4 Interoperability Studio</h3>
+      <p class="text-xs text-slate-500 mb-3">Ingest incoming HL7 v2 messages (ADT^A01, ORU^R01, MDM^T02) and transform EHR records into FHIR JSON resources.</p>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-semibold mb-1">HL7 v2 Message Payload</label>
+          <textarea id="hl7-msg" rows="6" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-mono text-2xs">MSH|^~\\&amp;|EPIC|HOSPITAL|NEWTON_EDMS|ARCHIVE|20260601120000||ADT^A01|MSG-998811|P|2.5&#10;PID|1||MRN-2026-9901||Vance^Eleanor||19900101|F&#10;PV1|1|I|CARDIOLOGY^01^02||||Dr^Chase^Robert|||||||||||ENC-2026-9901</textarea>
+        </div>
+      </div>
+
+      <div id="hl7-results" class="border rounded p-3 bg-slate-50 dark:bg-slate-900 text-xs mt-3 hidden"></div>
+
+      <div class="flex justify-end gap-2 mt-4">
+        <button class="tb text-xs" onclick="closeModal()">Close</button>
+        <button class="tb primary text-xs" onclick="submitHL7Ingest()">Ingest &amp; Parse HL7</button>
+      </div>
+    </div>
+  `);
+}
+
+async function submitHL7Ingest() {
+  const msg = val("hl7-msg");
+  if (!msg) {
+    toast("Please enter HL7 message text.", "error");
+    return;
+  }
+
+  const resultsBox = $("hl7-results");
+  resultsBox.innerHTML = `<div class="text-slate-400"><i class="fa-solid fa-spinner fa-spin"></i> Processing HL7 message…</div>`;
+  resultsBox.classList.remove("hidden");
+
+  try {
+    const res = await apiFetch("/medical/hl7/ingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hl7_message: msg }),
+    });
+    resultsBox.innerHTML = `<pre class="text-2xs font-mono overflow-x-auto">${esc(JSON.stringify(res.hl7_parsed, null, 2))}</pre>`;
+    toast("HL7 message processed successfully!", "success");
+    adminTab("medical");
+  } catch (e) {
+    resultsBox.innerHTML = `<div class="text-rose-600">HL7 error: ${e.message}</div>`;
+  }
+}
+
+async function openInformedConsentModal(patientId) {
+  const patients = (await apiFetch("/medical/patients")) || [];
+  showModal(`
+    <div class="p-4" style="max-width:550px">
+      <h3 class="font-bold text-base mb-2"><i class="fa-solid fa-file-signature text-purple-600"></i> Bedside Digital Informed Consent</h3>
+      <p class="text-xs text-slate-500 mb-3">Capture legally binding electronic signature for surgical procedures, anesthesia, or blood transfusions.</p>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-semibold mb-1">Target Patient *</label>
+          <select id="con-pat" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900 font-semibold">
+            ${patients.map((p) => `<option value="${p.id}" ${patientId === p.id ? 'selected' : ''}>${esc(p.mrn)} - ${esc(p.first_name)} ${esc(p.last_name)}</option>`).join("")}
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold mb-1">Consent Type *</label>
+            <select id="con-type" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900">
+              <option value="surgical">Surgical Authorization</option>
+              <option value="anesthesia">Anesthesia Administration</option>
+              <option value="blood_transfusion">Blood Transfusion</option>
+              <option value="hipaa_acknowledgment">HIPAA Privacy Notice</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Procedure Name *</label>
+            <input id="con-proc" placeholder="e.g. Laparoscopic Appendectomy" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold mb-1">Signer Full Name *</label>
+            <input id="con-signer" placeholder="e.g. Eleanor Vance" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Relationship</label>
+            <select id="con-rel" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900">
+              <option value="patient">Patient Self</option>
+              <option value="parent">Parent</option>
+              <option value="legal_guardian">Legal Guardian</option>
+              <option value="healthcare_proxy">Healthcare Proxy</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold mb-1">Witness Name</label>
+          <input id="con-witness" placeholder="e.g. Nurse Jackie Peyton, RN" class="w-full border p-1.5 rounded bg-white dark:bg-slate-900" />
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 mt-4">
+        <button class="tb text-xs" onclick="closeModal()">Cancel</button>
+        <button class="tb primary text-xs bg-purple-600 hover:bg-purple-700" onclick="submitInformedConsent()"><i class="fa-solid fa-signature"></i> Sign &amp; Generate PDF</button>
+      </div>
+    </div>
+  `);
+}
+
+async function submitInformedConsent() {
+  const patId = parseInt(val("con-pat"), 10);
+  const proc = val("con-proc");
+  const signer = val("con-signer");
+
+  if (!patId || !proc || !signer) {
+    toast("Patient, procedure name, and signer name are required.", "error");
+    return;
+  }
+
+  try {
+    const res = await apiFetch("/medical/consents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        patient_id: patId,
+        consent_type: val("con-type"),
+        procedure_name: proc,
+        signer_name: signer,
+        signer_relationship: val("con-rel"),
+        signature_data: "e-signed-touchpad-biometric-hash",
+        witness_name: val("con-witness") || undefined,
+      }),
+    });
+    closeModal();
+    toast(`Informed consent recorded! Generating PDF certification…`, "success");
+
+    // Download PDF
+    const token = localStorage.getItem("newton_access_token") || localStorage.getItem("token");
+    const pdfRes = await fetch(`/api/medical/consents/${res.id}/pdf`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (pdfRes.ok) {
+      const blob = await pdfRes.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Consent_${res.id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    adminTab("medical");
+  } catch (e) {
+    toast(`Consent submission failed: ${e.message}`, "error");
   }
 }

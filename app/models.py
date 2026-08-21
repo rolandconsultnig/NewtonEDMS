@@ -1310,3 +1310,112 @@ class InsuranceTemplate(Base):
     variables_schema = Column(JSON, default=dict)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=now)
+
+
+# =============================================================================
+# HEALTHCARE & CLINICAL EDMS MODELS (HIPAA, DICOM, HL7/FHIR, BREAK-GLASS)
+# =============================================================================
+
+
+class Patient(Base):
+    """Master Patient Index (MPI) and Electronic Health Record."""
+
+    __tablename__ = "patients"
+    id = Column(Integer, primary_key=True, index=True)
+    mrn = Column(String, unique=True, index=True, nullable=False)  # Medical Record Number e.g. MRN-2026-001
+    first_name = Column(String, index=True, nullable=False)
+    last_name = Column(String, index=True, nullable=False)
+    dob = Column(DateTime, nullable=False)
+    gender = Column(String, default="U")  # M, F, O, U
+    blood_type = Column(String)  # A+, A-, B+, B-, AB+, AB-, O+, O-
+    primary_physician = Column(String)
+    insurance_id = Column(String)
+    is_active = Column(Boolean, default=True)
+    metadata_json = Column("metadata", JSON, default=dict)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class PatientEncounter(Base):
+    """Clinical encounter / hospital admission / surgery event."""
+
+    __tablename__ = "patient_encounters"
+    id = Column(Integer, primary_key=True, index=True)
+    encounter_number = Column(String, unique=True, index=True, nullable=False)  # ENC-2026-9001
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    encounter_type = Column(String, nullable=False)  # inpatient, outpatient, emergency, surgery, telehealth
+    admission_date = Column(DateTime, default=now)
+    discharge_date = Column(DateTime, nullable=True)
+    department = Column(String, index=True)  # Emergency, Cardiology, Oncology, Psychiatry, Pediatrics, Surgery
+    attending_physician = Column(String, index=True)
+    chief_complaint = Column(Text)
+    status = Column(String, default="admitted")  # admitted, in_progress, discharged, transferred, completed
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class MedicalDocument(Base):
+    """Clinical record with granular ABAC sensitivity level and ICD-10 tagging."""
+
+    __tablename__ = "medical_documents"
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    encounter_id = Column(Integer, ForeignKey("patient_encounters.id"), nullable=True, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False, index=True)
+    clinical_category = Column(String, nullable=False)  # clinical_note, discharge_summary, lab_result, radiology_dicom, surgical_consent, physician_order, pathology_report
+    sensitivity_level = Column(String, default="standard")  # standard, psychiatric, oncology, substance_use, sti, vip_confidential
+    icd10_codes = Column(JSON, default=list)  # list of diagnosis ICD-10 strings
+    is_signed = Column(Boolean, default=False)
+    signed_by_physician = Column(String)
+    signed_at = Column(DateTime)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class DicomStudy(Base):
+    """DICOM & PACS Diagnostic Medical Imaging metadata."""
+
+    __tablename__ = "dicom_studies"
+    id = Column(Integer, primary_key=True, index=True)
+    study_instance_uid = Column(String, unique=True, index=True, nullable=False)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False, index=True)
+    modality = Column(String, index=True, nullable=False)  # CT, MR, XR, US, NM, MG
+    body_part_examined = Column(String)  # CHEST, HEAD, ABDOMEN, SPINE, PELVIS
+    series_count = Column(Integer, default=1)
+    instance_count = Column(Integer, default=1)
+    metadata_json = Column(JSON, default=dict)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+
+class BreakGlassEvent(Base):
+    """Emergency 'Break-Glass' clinical access override and HIPAA audit log."""
+
+    __tablename__ = "break_glass_events"
+    id = Column(Integer, primary_key=True, index=True)
+    clinician_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=True, index=True)
+    emergency_rationale = Column(Text, nullable=False)  # Mandatory acute clinical justification
+    workstation_ip = Column(String)
+    alert_sent = Column(Boolean, default=True)
+    reviewed_by_compliance = Column(Boolean, default=False)
+    timestamp = Column(DateTime, default=now)
+
+
+class InformedConsent(Base):
+    """Bedside digital informed consent with cryptographic e-Signature."""
+
+    __tablename__ = "informed_consents"
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    encounter_id = Column(Integer, ForeignKey("patient_encounters.id"), nullable=True, index=True)
+    consent_type = Column(String, nullable=False)  # surgical, anesthesia, blood_transfusion, hipaa_acknowledgment
+    procedure_name = Column(String, nullable=False)
+    signer_name = Column(String, nullable=False)
+    signer_relationship = Column(String, default="patient")  # patient, parent, legal_guardian, healthcare_proxy
+    signature_data = Column(Text, nullable=False)  # Base64 signature path/coordinates
+    witness_name = Column(String)
+    signed_at = Column(DateTime, default=now)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
