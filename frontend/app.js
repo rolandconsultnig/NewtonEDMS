@@ -1532,7 +1532,7 @@ async function renderCalendar() {
           </div>
           <input id="cal-doc" type="number" placeholder="Associated Document ID (optional)" class="border p-2 rounded w-full text-sm" />
           <textarea id="cal-desc" placeholder="Notes / details (optional)" rows="2" class="border p-2 rounded w-full text-sm"></textarea>
-          <button onclick="createEvent()" class="cal-nav-btn primary w-full justify-center py-2">
+          <button onclick="saveCalEvent()" class="cal-nav-btn primary w-full justify-center py-2">
             <i class="fa-solid fa-calendar-check"></i> Save Event
           </button>
         </div>
@@ -1730,7 +1730,7 @@ window.createEventFromModal = async function(dateStr) {
   openDayEventsModal(dateStr);
 };
 
-async function createEvent() {
+window.saveCalEvent = async function() {
   const title = val("cal-title");
   if (!title || !title.trim()) {
     toast("Please enter an event title", "warning");
@@ -1751,7 +1751,11 @@ async function createEvent() {
   if ($("cal-title")) $("cal-title").value = "";
   if ($("cal-desc")) $("cal-desc").value = "";
   renderCalendar();
-}
+};
+window.createEvent = window.saveCalEvent;
+window.addCalendarEvent = window.saveCalEvent;
+async function createEvent() { return window.saveCalEvent(); }
+async function saveCalEvent() { return window.saveCalEvent(); }
 
 async function delEvent(id) {
   await apiFetch(`/calendar/${id}`, { method: "DELETE" });
