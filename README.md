@@ -156,6 +156,15 @@ sudo certbot --nginx -d edms.example.com
 
 Health probe: `GET /api/system/health`. Logs: `journalctl -u newedms -f`.
 
+### Updating Production
+
+See the comprehensive [Production Deployment & Update Guide](deploy/prod.md). Quick flow:
+```bash
+git fetch origin && git reset --hard origin/main && git pull origin main
+venv/bin/pip install -r requirements.txt
+pm2 restart newton-edms  # or: sudo systemctl restart newedms
+```
+
 ### Switching to PostgreSQL (multi-worker)
 
 SQLite is single-writer: keep `--workers 1` in `deploy/newedms.service`. For

@@ -77,16 +77,6 @@
           </label>
           <button type="button" onclick="login()" class="btn-login">Sign in</button>
           
-          <div style="display:flex; align-items:center; gap:10px; margin:14px 0 10px;">
-            <div style="flex:1; height:1px; background:#e2e8f0;"></div>
-            <span style="font-size:11px; color:#94a3b8; font-weight:600; text-transform:uppercase;">or passwordless</span>
-            <div style="flex:1; height:1px; background:#e2e8f0;"></div>
-          </div>
-
-          <button type="button" onclick="loginWithBiometrics()" class="btn-biometrics" id="btn-bio-login" style="width:100%; height:42px; border:1.5px solid #0d9488; background:#f0fdfa; color:#0f766e; border-radius:10px; font-weight:600; font-size:13.5px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; transition:all 0.2s ease;" onmouseover="this.style.background='#ccfbf1'" onmouseout="this.style.background='#f0fdfa'">
-            <i class="fa-solid fa-fingerprint text-teal-600 text-base"></i> Sign in with Biometrics / Passkey
-          </button>
-          
           <p class="login-hint" id="sso-links"><a href="/api/auth/oidc/login" id="sso-oidc">Sign in with SSO</a> · <a href="/api/auth/saml/login" id="sso-saml">SAML</a></p>
           
           <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid #f1f5f9; text-align: center;">

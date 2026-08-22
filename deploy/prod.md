@@ -122,17 +122,74 @@ sudo certbot --nginx -d edms.example.com
 
 Then set `EDMS_COOKIE_SECURE=true` and restart PM2.
 
-## 8. Deploy / update flow
+## 8. Push to GitHub & Production Update Guide
 
-```bash
-cd /var/www/newton
-git fetch origin
-git reset --hard origin/main
-git pull
-venv/bin/pip install -r requirements.txt
-pm2 restart newton-edms
-pm2 logs newton-edms --lines 20
-```
+### Step 8.1 — On Local Development Machine (Push to GitHub)
+
+1. Review and stage all modified files:
+   ```bash
+   git status
+   git add .
+   ```
+2. Commit your changes:
+   ```bash
+   git commit -m "feat/fix: describe your updates here"
+   ```
+3. Push commits to GitHub:
+   ```bash
+   git push origin main
+   ```
+
+---
+
+### Step 8.2 — On Production Server (Pull & Apply Update)
+
+1. **SSH into the production server**:
+   ```bash
+   ssh ubuntu@your-server-ip
+   ```
+
+2. **Navigate to the application directory**:
+   ```bash
+   cd /var/www/newton
+   ```
+
+3. **Fetch latest code from GitHub & reset working tree**:
+   ```bash
+   git fetch origin
+   git reset --hard origin/main
+   git pull origin main
+   ```
+
+4. **Update Python dependencies** *(if `requirements.txt` was updated)*:
+   ```bash
+   venv/bin/pip install -r requirements.txt
+   ```
+
+5. **Restart the application service**:
+
+   *If using **PM2** (standard setup):*
+   ```bash
+   pm2 restart newton-edms
+   pm2 logs newton-edms --lines 30
+   ```
+
+   *If using **Systemd**:*
+   ```bash
+   sudo systemctl restart newedms
+   sudo journalctl -u newedms -n 30 -f
+   ```
+
+6. **Reload Nginx** *(if nginx configs or TLS changed)*:
+   ```bash
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
+
+7. **Verify application health**:
+   ```bash
+   curl -s http://127.0.0.1:8000/api/system/health
+   ```
+
 
 ## 9. Troubleshooting
 
