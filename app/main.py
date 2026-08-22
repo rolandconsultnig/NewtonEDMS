@@ -222,6 +222,22 @@ def manual_page():
     return HTMLResponse(page.read_text(encoding="utf-8"))
 
 
+@app.get("/manual.pdf", include_in_schema=False)
+@app.get("/docs/NewtonEDMS-User-Manual-v2.1.pdf", include_in_schema=False)
+def download_manual_pdf():
+    from pathlib import Path
+    pdf_path = FRONTEND_DIR / "manual.pdf"
+    if not pdf_path.exists():
+        pdf_path = Path(__file__).resolve().parent.parent / "docs" / "NewtonEDMS-User-Manual-v2.1.pdf"
+    if not pdf_path.exists():
+        return HTMLResponse("PDF Manual not found", status_code=404)
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename="NewtonEDMS-User-Manual-v2.1.pdf",
+    )
+
+
 @app.websocket("/ws/collab/{doc_id}")
 async def collab_socket(websocket, doc_id: int):
     import json

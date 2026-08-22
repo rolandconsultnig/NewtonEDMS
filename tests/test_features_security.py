@@ -399,3 +399,14 @@ def test_path_traversal_blocking(client):
     r = client.get("/api/documents/%2e%2e/%2e%2e/etc/passwd")
     assert r.status_code == 400
     assert "Path Traversal" in r.json().get("detail", "")
+
+
+def test_download_manual_pdf_and_html(client):
+    r_html = client.get("/manual")
+    assert r_html.status_code == 200
+    assert "Newton" in r_html.text and "Manual" in r_html.text
+
+    r_pdf = client.get("/manual.pdf")
+    assert r_pdf.status_code == 200
+    assert r_pdf.headers.get("content-type") == "application/pdf"
+    assert len(r_pdf.content) > 100000

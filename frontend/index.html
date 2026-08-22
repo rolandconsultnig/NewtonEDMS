@@ -51,6 +51,15 @@
           <li>Process — versions, reviews, and BPMN cases</li>
           <li>Connect — share links, Office, WebDAV, and SSO</li>
         </ul>
+
+        <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.15); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+          <a href="/manual.pdf" target="_blank" download="NewtonEDMS-User-Manual-v2.1.pdf" style="display: inline-flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.12); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.25); color: #fff; padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; text-decoration: none; transition: all 0.2s ease;">
+            <i class="fa-solid fa-file-pdf text-red-400"></i> Download User Manual (PDF v2.1)
+          </a>
+          <a href="/manual" target="_blank" style="color: var(--yh-accent); font-size: 13px; font-weight: 500; text-decoration: none;">
+            <i class="fa-solid fa-book-open mr-1"></i> Interactive Guide &rarr;
+          </a>
+        </div>
       </section>
 
       <section class="yh-pane-login">
@@ -79,6 +88,13 @@
           </button>
           
           <p class="login-hint" id="sso-links"><a href="/api/auth/oidc/login" id="sso-oidc">Sign in with SSO</a> · <a href="/api/auth/saml/login" id="sso-saml">SAML</a></p>
+          
+          <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid #f1f5f9; text-align: center;">
+            <a href="/manual.pdf" target="_blank" download="NewtonEDMS-User-Manual-v2.1.pdf" style="display: inline-flex; align-items: center; gap: 6px; color: #64748b; font-size: 12.5px; font-weight: 500; text-decoration: none; transition: color 0.2s ease;" onmouseover="this.style.color='#0d9488'" onmouseout="this.style.color='#64748b'">
+              <i class="fa-solid fa-file-pdf text-red-500"></i> Download User Manual v2.1 (PDF)
+            </a>
+          </div>
+
           <p id="login-err" class="login-err hidden"></p>
         </div>
       </section>
