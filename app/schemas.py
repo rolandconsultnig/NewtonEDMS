@@ -1398,3 +1398,63 @@ class InformedConsentOut(BaseModel):
     signer_relationship: str
     witness_name: str | None = None
     signed_at: datetime
+
+
+class AuditOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int | None = None
+    username: str | None = None
+    actor_role: str | None = None
+    action: str
+    resource_type: str | None = None
+    resource_id: int | None = None
+    resource_name: str | None = None
+    severity: str = "INFO"
+    status: str = "SUCCESS"
+    details: str | None = None
+    details_json: dict[str, Any] | list[Any] | None = None
+    ip: str | None = None
+    user_agent: str | None = None
+    checksum: str | None = None
+    timestamp: datetime
+
+
+class AuditStatsOut(BaseModel):
+    total_events: int
+    today_events: int
+    security_alerts: int
+    active_actors_24h: int
+    access_denials: int
+    by_severity: dict[str, int]
+    top_actions: list[dict[str, Any]]
+    recent_trend: list[dict[str, Any]]
+
+
+class ClientSecurityEvent(BaseModel):
+    event_type: str
+    details: str
+    resource_type: str | None = None
+    resource_id: int | None = None
+    severity: str = "WARNING"
+
+
+class OnlineUserOut(BaseModel):
+    user_id: int
+    username: str
+    role: str
+    email: str | None = None
+    avatar: str | None = None
+    ip: str | None = None
+    user_agent: str | None = None
+    current_path: str | None = None
+    last_seen: str
+    idle_seconds: int
+    status: str
+
+
+class HeartbeatRequest(BaseModel):
+    current_path: str | None = "/"
+    active_tab: str | None = "dashboard"
+

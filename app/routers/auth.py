@@ -196,11 +196,45 @@ def login(
 
             record_failure(db, user)
             db.commit()
+            audit(
+                db,
+                user,
+                "LOGIN_FAILED",
+                "user",
+                user.id,
+                f"Failed login attempt for user '{form_data.username}'",
+                request=request,
+                severity="HIGH",
+                status="FAILED",
+            )
+        else:
+            audit(
+                db,
+                None,
+                "LOGIN_FAILED_UNKNOWN_USER",
+                "auth",
+                None,
+                f"Failed login attempt for nonexistent username '{form_data.username}'",
+                request=request,
+                severity="HIGH",
+                status="FAILED",
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
         )
     if not user.is_active:
+        audit(
+            db,
+            user,
+            "LOGIN_DEACTIVATED_USER",
+            "user",
+            user.id,
+            f"Login attempted on deactivated user account '{user.username}'",
+            request=request,
+            severity="SECURITY_ALERT",
+            status="DENIED",
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Account is deactivated"
         )
@@ -208,10 +242,32 @@ def login(
 
     enforce_request(db, request, user)
     if password_expired(db, user):
+        audit(
+            db,
+            user,
+            "LOGIN_PASSWORD_EXPIRED",
+            "user",
+            user.id,
+            f"Password expired for user '{user.username}'",
+            request=request,
+            severity="MEDIUM",
+            status="DENIED",
+        )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="password_expired")
     record_success(user)
     if user.totp_enabled:
         if not totp_code or not verify_totp(user.totp_secret or "", totp_code):
+            audit(
+                db,
+                user,
+                "LOGIN_2FA_FAILED",
+                "user",
+                user.id,
+                f"2FA authentication failed or required for '{user.username}'",
+                request=request,
+                severity="HIGH",
+                status="FAILED",
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="totp_required",
@@ -223,7 +279,9 @@ def login(
         "user",
         user.id,
         "Successful login",
-        ip=request.client.host if request else None,
+        request=request,
+        severity="INFO",
+        status="SUCCESS",
     )
     user.last_login_at = now()
     remember_me = str(remember or "").lower() in ("1", "true", "on", "yes")
@@ -257,6 +315,9 @@ def logout(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    from app.presence import presence_manager
+
+    presence_manager.remove(user.id)
     payload = decode_token(token)
     jti = payload.get("jti")
     exp = payload.get("exp")
@@ -268,7 +329,7 @@ def logout(
         db.query(RevokedToken).filter(RevokedToken.expires_at < now()).delete()
         db.commit()
     response.delete_cookie(settings.cookie_name, path="/")
-    audit(db, user, "USER_LOGOUT", "user", user.id, "Logged out")
+    audit(db, user, "USER_LOGOUT", "user", user.id, "Logged out", severity="INFO", status="SUCCESS")
     return {"ok": True}
 
 

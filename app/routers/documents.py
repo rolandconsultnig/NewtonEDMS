@@ -119,7 +119,29 @@ def get_document(
         raise HTTPException(status_code=404, detail="Document not found")
     f = db.get(Folder, d.folder_id)
     if not has_permission(db, user, "read", f, d):
+        audit(
+            db,
+            user,
+            "DOCUMENT_ACCESS_DENIED",
+            "document",
+            d.id,
+            f"Unauthorized read attempt on document '{d.title or d.name}'",
+            resource_name=d.title or d.name,
+            severity="HIGH",
+            status="DENIED",
+        )
         raise HTTPException(status_code=403, detail="No permission")
+    audit(
+        db,
+        user,
+        "DOCUMENT_VIEW",
+        "document",
+        d.id,
+        f"Viewed document '{d.title or d.name}'",
+        resource_name=d.title or d.name,
+        severity="INFO",
+        status="SUCCESS",
+    )
     return d
 
 

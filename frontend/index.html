@@ -18,10 +18,10 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:image" content="/static/og-image.png" />
 
-  <link rel="stylesheet" href="/static/tailwind.css?v=newton-v12" />
+  <link rel="stylesheet" href="/static/tailwind.css?v=newton-v13" />
   <link rel="stylesheet" href="/static/fontawesome/all.min.css" />
-  <link rel="stylesheet" href="/static/skin.css?v=newton-v12" />
-  <link rel="stylesheet" href="/static/landing.css?v=newton-v12" />
+  <link rel="stylesheet" href="/static/skin.css?v=newton-v13" />
+  <link rel="stylesheet" href="/static/landing.css?v=newton-v13" />
 </head>
 <body>
 
@@ -109,6 +109,12 @@
         <input id="search-input" type="search" placeholder="Search documents…  /" onkeydown="if(event.key==='Enter')runSearch()" />
       </div>
       <div class="header-actions">
+        <!-- Live Online Users Presence Indicator -->
+        <button type="button" class="online-users-pill" onclick="openOnlineUsersModal()" title="Users currently online" id="online-users-btn">
+          <span class="online-pulse-dot"></span>
+          <span id="online-users-count">1</span> <span class="online-lbl">Online</span>
+        </button>
+
         <button type="button" class="icon-btn primary" onclick="openUploadModal()" title="Upload Document (U)"><i class="fa-solid fa-cloud-arrow-up"></i></button>
 
         <!-- Top Right Corner Notification Bell Dropdown -->
@@ -591,10 +597,54 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=newton-v12"></script>
-  <script src="/static/ce.js?v=newton-v12"></script>
-  <script src="/static/intel.js?v=newton-v12"></script>
-  <script src="/static/enterprise.js?v=newton-v12"></script>
-  <script src="/static/complete.js?v=newton-v12"></script>
+  <!-- Real-Time Online Users Modal -->
+  <div id="online-users-modal" class="modal">
+    <div style="max-width:620px; width:92vw;">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:16px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="online-pulse-dot"></span>
+          <h3 style="margin:0; font-size:16px; font-weight:700;"><i class="fa-solid fa-users text-teal-600 mr-1.5"></i> Active Users Online</h3>
+        </div>
+        <button type="button" onclick="refreshOnlineUsersModal()" class="tb text-xs" style="padding:4px 8px;"><i class="fa-solid fa-arrows-rotate mr-1"></i> Refresh</button>
+      </div>
+      <p style="font-size:12px; color:var(--muted); margin-bottom:14px;">Live real-time presence telemetry across the workspace (active within last 5 minutes).</p>
+      
+      <div id="online-users-list" style="max-height:360px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;">
+        <div style="text-align:center; padding:24px; color:var(--muted);">Loading active users…</div>
+      </div>
+
+      <div class="row" style="margin-top:16px; justify-content:flex-end;">
+        <button onclick="closeModal('online-users-modal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Deep Audit Event Inspector Modal -->
+  <div id="audit-inspect-modal" class="modal">
+    <div style="max-width:760px; width:94vw;">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:16px;">
+        <div>
+          <h3 style="margin:0; font-size:16px; font-weight:700;"><i class="fa-solid fa-shield-halved text-teal-600 mr-1.5"></i> Audit Event Forensic Inspector</h3>
+          <span id="insp-audit-sub" style="font-size:11.5px; color:var(--muted);">Tamper-evident WORM Compliance Record</span>
+        </div>
+        <span id="insp-audit-sev-badge" class="audit-sev-badge audit-sev-info">INFO</span>
+      </div>
+
+      <div id="audit-inspect-body" style="max-height:480px; overflow-y:auto; font-size:12.5px;">
+        <!-- Filled dynamically -->
+      </div>
+
+      <div class="row" style="margin-top:16px; justify-content:space-between;">
+        <button type="button" class="tb text-xs" onclick="copyAuditInspectorJson()"><i class="fa-solid fa-copy mr-1"></i> Copy Event JSON</button>
+        <button onclick="closeModal('audit-inspect-modal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=newton-v13"></script>
+  <script src="/static/ce.js?v=newton-v13"></script>
+  <script src="/static/intel.js?v=newton-v13"></script>
+  <script src="/static/enterprise.js?v=newton-v13"></script>
+  <script src="/static/complete.js?v=newton-v13"></script>
 </body>
 </html>

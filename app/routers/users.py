@@ -1,18 +1,68 @@
-"""User management routes (admin-only)."""
-
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app import models
 from app.audit import audit
 from app.database import get_db
 from app.models import User
-from app.schemas import UserCreate, UserOut, UserUpdate
-from app.security import get_password_hash, require_role, validate_password_strength
+from app.presence import presence_manager
+from app.schemas import HeartbeatRequest, OnlineUserOut, UserCreate, UserOut, UserUpdate
+from app.security import (
+    get_current_user,
+    get_password_hash,
+    require_role,
+    validate_password_strength,
+)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
+
+
+@router.get("/online", response_model=list[OnlineUserOut])
+def get_online_users(
+    user: User = Depends(get_current_user),
+):
+    """Retrieve list of currently online active users."""
+    return presence_manager.get_online(max_idle_seconds=300)
+
+
+@router.get("/online/count")
+def get_online_users_count(
+    user: User = Depends(get_current_user),
+):
+    """Retrieve count of currently online active users."""
+    return {"count": presence_manager.count_online(max_idle_seconds=300)}
+
+
+@router.post("/heartbeat")
+def user_heartbeat(
+    req: Request,
+    payload: HeartbeatRequest | None = None,
+    user: User = Depends(get_current_user),
+):
+    """Keep-alive heartbeat updating the active user session and telemetry."""
+    ip = req.headers.get("x-forwarded-for")
+    if ip:
+        ip = ip.split(",")[0].strip()
+    elif req.client:
+        ip = req.client.host
+    else:
+        ip = "127.0.0.1"
+    ua = req.headers.get("user-agent", "")
+    path = payload.current_path if payload else "/"
+    presence_manager.touch(
+        user_id=user.id,
+        username=user.username,
+        role=user.role,
+        email=user.email,
+        avatar=user.avatar,
+        ip=ip,
+        user_agent=ua,
+        current_path=path,
+    )
+    return {"ok": True, "online_count": presence_manager.count_online(300)}
+
 
 
 @router.get("", response_model=list[UserOut])

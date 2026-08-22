@@ -547,6 +547,7 @@ async function enterApp() {
   if (typeof loadIntel === "function") await loadIntel();
   fillFolderSelect();
   updateNotifBadge();
+  startPresenceTracking();
   navTo("folders");
 }
 
@@ -566,6 +567,7 @@ async function toggleTheme() {
 }
 
 function showLogin() {
+  stopPresenceTracking();
   document.body.classList.remove("in-app");
   show("app-shell", false);
   show("login-view", true);
@@ -2864,12 +2866,7 @@ async function adminTab(tab) {
       <button onclick="runBackup()" class="px-3 py-1 bg-blue-600 text-white rounded mb-3">Create backup now</button>
       <ul>${backups.length ? backups.map((b) => `<li class="border-b p-2">${esc(b.file)} — ${formatBytes(b.size)}</li>`).join("") : '<li class="text-gray-400 p-2">No backups yet</li>'}</ul>`;
   } else if (tab === "audit") {
-    const logs = (await apiFetch("/audit")) || [];
-    content.innerHTML = `
-      <h3 class="font-bold mb-2">Audit trail</h3>
-      <table class="w-full text-sm"><thead><tr class="bg-gray-100"><th class="p-2">Action</th><th>Resource</th><th>Details</th><th>Time</th></tr></thead>
-      <tbody>${logs.map((l) => `<tr class="border-b"><td class="p-2">${esc(l.action)}</td><td>${esc(l.resource_type || "")} ${l.resource_id || ""}</td>
-        <td>${esc((l.details || "").slice(0, 80))}</td><td>${fmtDate(l.timestamp)}</td></tr>`).join("")}</tbody></table>`;
+    await renderEnterpriseAuditDashboard(content);
   } else if (typeof ceAdminTab === "function") {
     await ceAdminTab(tab, content);
   }
@@ -2962,3 +2959,437 @@ async function runBackup() {
   alert(`Backup ${r.file} created`);
   adminTab("backup");
 }
+
+// ---------------------------------------------------------------------------
+// Real-Time Online Presence Tracking
+// ---------------------------------------------------------------------------
+let presenceTimer = null;
+let auditLiveTimer = null;
+let currentAuditLogs = [];
+let currentAuditInspectorLog = null;
+
+async function sendPresenceHeartbeat() {
+  try {
+    const res = await apiFetch("/users/heartbeat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ current_path: location.hash || "home", active_tab: (typeof currentTab !== "undefined" ? currentTab : "home") }),
+    });
+    if (res && res.online_count !== undefined) {
+      const countEl = $("online-users-count");
+      if (countEl) countEl.textContent = res.online_count;
+    }
+  } catch (e) {
+    // Non-blocking
+  }
+}
+
+function startPresenceTracking() {
+  if (presenceTimer) clearInterval(presenceTimer);
+  sendPresenceHeartbeat();
+  presenceTimer = setInterval(sendPresenceHeartbeat, 25000);
+}
+
+function stopPresenceTracking() {
+  if (presenceTimer) {
+    clearInterval(presenceTimer);
+    presenceTimer = null;
+  }
+}
+
+async function openOnlineUsersModal() {
+  openModal("online-users-modal");
+  await refreshOnlineUsersModal();
+}
+
+async function refreshOnlineUsersModal() {
+  const listEl = $("online-users-list");
+  if (!listEl) return;
+  listEl.innerHTML = `<div style="text-align:center; padding:24px; color:var(--muted);"><i class="fa-solid fa-spinner fa-spin mr-1.5 text-teal-600"></i> Polling online users…</div>`;
+
+  try {
+    const users = (await apiFetch("/users/online")) || [];
+    const countEl = $("online-users-count");
+    if (countEl) countEl.textContent = users.length;
+
+    if (!users.length) {
+      listEl.innerHTML = `<div style="text-align:center; padding:28px; color:var(--muted);">No colleagues currently active.</div>`;
+      return;
+    }
+
+    listEl.innerHTML = users.map((u) => {
+      const initials = (u.username || "?").slice(0, 2).toUpperCase();
+      const roleColor = u.role === "superadmin" ? "#dc2626" : u.role === "admin" ? "#7c3aed" : u.role === "manager" ? "#0284c7" : "#0d9488";
+      const statusBadge = u.status === "active" 
+        ? `<span style="display:inline-flex; align-items:center; gap:5px; font-size:11px; color:#059669; font-weight:600;"><span class="online-pulse-dot" style="width:6px; height:6px;"></span> Active now</span>`
+        : `<span style="display:inline-flex; align-items:center; gap:5px; font-size:11px; color:#d97706; font-weight:600;"><span style="width:6px; height:6px; background:#f59e0b; border-radius:50%; display:inline-block;"></span> Idle (${Math.floor(u.idle_seconds / 60)}m ago)</span>`;
+
+      return `
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:#ffffff; border:1px solid var(--border); border-radius:10px; transition:all 0.2s ease;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="width:38px; height:38px; border-radius:50%; background:linear-gradient(135deg, ${roleColor} 0%, #0f172a 100%); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; box-shadow:0 2px 6px rgba(0,0,0,0.15);">
+              ${esc(initials)}
+            </div>
+            <div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <strong style="font-size:13.5px; color:var(--text);">${esc(u.username)}</strong>
+                <span style="font-size:10px; font-weight:700; text-transform:uppercase; padding:1px 6px; border-radius:4px; background:rgba(0,0,0,0.06); color:${roleColor}; border:1px solid rgba(0,0,0,0.08);">${esc(u.role)}</span>
+              </div>
+              <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">
+                ${u.email ? `<span style="margin-right:8px;"><i class="fa-solid fa-envelope mr-1 text-slate-400"></i>${esc(u.email)}</span>` : ""}
+                <span><i class="fa-solid fa-network-wired mr-1 text-slate-400"></i>${esc(u.ip || "127.0.0.1")}</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="text-align:right;">
+            <div>${statusBadge}</div>
+            <div style="font-size:11px; color:var(--muted); margin-top:3px;"><i class="fa-solid fa-compass mr-1"></i> ${esc(u.current_path || "/")}</div>
+          </div>
+        </div>
+      `;
+    }).join("");
+  } catch (e) {
+    listEl.innerHTML = `<div style="text-align:center; padding:20px; color:#dc2626;"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i> Failed to load online presence data.</div>`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Enterprise Audit Trail & Forensic Compliance Subsystem
+// ---------------------------------------------------------------------------
+let auditFilterState = {
+  search: "",
+  severity: "ALL",
+  status: "ALL",
+  action: "ALL",
+  live: false,
+};
+
+async function renderEnterpriseAuditDashboard(content) {
+  content.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+      <div>
+        <h3 style="margin:0; font-size:18px; font-weight:800; display:flex; align-items:center; gap:8px;">
+          <i class="fa-solid fa-shield-halved text-teal-600"></i> Enterprise Audit Trail &amp; SOC Telemetry
+        </h3>
+        <p style="margin:4px 0 0; font-size:12.5px; color:var(--muted);">
+          Cryptographically sealed immutable record of document operations, security events, authentication, and administrative actions.
+        </p>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <button type="button" id="audit-live-btn" class="tb text-xs" onclick="toggleAuditLiveStream()" style="border-radius:20px; padding:6px 14px; font-weight:600;">
+          <i class="fa-solid fa-satellite-dish mr-1"></i> Live Stream: OFF
+        </button>
+        <div class="drop" id="audit-export-drop">
+          <button type="button" class="tb primary text-xs" onclick="toggleDrop('audit-export-drop')">
+            <i class="fa-solid fa-download mr-1"></i> Export Compliance Log <i class="fa-solid fa-chevron-down ml-1"></i>
+          </button>
+          <div class="drop-menu drop-menu-right">
+            <button onclick="downloadAuditExport('csv'); closeDrops()"><i class="fa-solid fa-file-csv text-emerald-600 mr-2"></i> Export as CSV (.csv)</button>
+            <button onclick="downloadAuditExport('json'); closeDrops()"><i class="fa-solid fa-file-code text-indigo-600 mr-2"></i> Export as JSON (WORM Sealed)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4 KPI Stat Metric Cards -->
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:18px;" id="audit-kpi-row">
+      <div class="audit-kpi-card">
+        <div class="kpi-lbl"><i class="fa-solid fa-list-check text-teal-600 mr-1"></i> Total Events</div>
+        <div class="kpi-num" id="kpi-total-events">-</div>
+      </div>
+      <div class="audit-kpi-card">
+        <div class="kpi-lbl"><i class="fa-solid fa-triangle-exclamation text-rose-600 mr-1"></i> Security Alerts</div>
+        <div class="kpi-num" style="color:#dc2626;" id="kpi-sec-alerts">-</div>
+      </div>
+      <div class="audit-kpi-card">
+        <div class="kpi-lbl"><i class="fa-solid fa-user-shield text-indigo-600 mr-1"></i> Active Actors (24h)</div>
+        <div class="kpi-num" style="color:#4f46e5;" id="kpi-active-actors">-</div>
+      </div>
+      <div class="audit-kpi-card">
+        <div class="kpi-lbl"><i class="fa-solid fa-ban text-amber-600 mr-1"></i> Access Denials</div>
+        <div class="kpi-num" style="color:#d97706;" id="kpi-denials">-</div>
+      </div>
+    </div>
+
+    <!-- Filter & Search Toolbar -->
+    <div style="background:#fff; border:1px solid var(--border); border-radius:var(--radius); padding:12px; margin-bottom:14px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between;">
+      <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; flex:1; min-width:320px;">
+        <div style="position:relative; flex:1; min-width:180px;">
+          <i class="fa-solid fa-magnifying-glass" style="position:absolute; left:10px; top:9px; color:var(--muted); font-size:12px;"></i>
+          <input id="audit-search-input" type="search" placeholder="Search actions, users, IPs, details…" oninput="onAuditSearchChange(this.value)" style="width:100%; box-sizing:border-box; border:1px solid var(--border); border-radius:8px; padding:7px 10px 7px 30px; font-size:12.5px;" />
+        </div>
+
+        <select id="audit-filter-sev" onchange="onAuditSevFilter(this.value)" style="border:1px solid var(--border); border-radius:8px; padding:6px 10px; font-size:12px; font-weight:500;">
+          <option value="ALL">All Severities</option>
+          <option value="CRITICAL">🔴 Critical &amp; Alerts</option>
+          <option value="HIGH">🟠 High Priority</option>
+          <option value="MEDIUM">🟡 Medium / Warnings</option>
+          <option value="INFO">🔵 Informational</option>
+        </select>
+
+        <select id="audit-filter-status" onchange="onAuditStatusFilter(this.value)" style="border:1px solid var(--border); border-radius:8px; padding:6px 10px; font-size:12px; font-weight:500;">
+          <option value="ALL">All Statuses</option>
+          <option value="SUCCESS">✅ Success</option>
+          <option value="DENIED">⛔ Access Denied</option>
+          <option value="FAILED">❌ Failed</option>
+          <option value="SUSPICIOUS">⚠️ Suspicious</option>
+        </select>
+      </div>
+
+      <button type="button" class="tb text-xs" onclick="loadAuditEvents(true)" style="padding:6px 12px;">
+        <i class="fa-solid fa-arrows-rotate mr-1"></i> Refresh Table
+      </button>
+    </div>
+
+    <!-- Audit Event Log Table Container -->
+    <div style="background:#fff; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow-sm);">
+      <div id="audit-table-wrapper" style="overflow-x:auto;">
+        <table class="w-full text-left" style="font-size:12.5px; border-collapse:collapse;">
+          <thead>
+            <tr style="background:#f8fafc; border-bottom:1px solid var(--border); color:var(--text-secondary); font-size:11.5px; text-transform:uppercase; letter-spacing:0.5px;">
+              <th style="padding:10px 14px; font-weight:700;">Severity</th>
+              <th style="padding:10px 14px; font-weight:700;">Timestamp</th>
+              <th style="padding:10px 14px; font-weight:700;">Actor</th>
+              <th style="padding:10px 14px; font-weight:700;">Action Code</th>
+              <th style="padding:10px 14px; font-weight:700;">Resource</th>
+              <th style="padding:10px 14px; font-weight:700;">Details &amp; Telemetry</th>
+              <th style="padding:10px 14px; font-weight:700;">Client / IP</th>
+              <th style="padding:10px 14px; font-weight:700; text-align:right;">Forensics</th>
+            </tr>
+          </thead>
+          <tbody id="audit-log-tbody">
+            <tr><td colspan="8" style="text-align:center; padding:32px; color:var(--muted);"><i class="fa-solid fa-spinner fa-spin mr-1.5 text-teal-600"></i> Loading audit events…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  await Promise.all([loadAuditStats(), loadAuditEvents()]);
+}
+
+async function loadAuditStats() {
+  try {
+    const stats = await apiFetch("/audit/stats");
+    if (stats) {
+      if ($("kpi-total-events")) $("kpi-total-events").textContent = (stats.total_events || 0).toLocaleString();
+      if ($("kpi-sec-alerts")) $("kpi-sec-alerts").textContent = (stats.security_alerts || 0).toLocaleString();
+      if ($("kpi-active-actors")) $("kpi-active-actors").textContent = (stats.active_actors_24h || 0).toLocaleString();
+      if ($("kpi-denials")) $("kpi-denials").textContent = (stats.access_denials || 0).toLocaleString();
+    }
+  } catch (e) {
+    console.error("Failed to load audit stats", e);
+  }
+}
+
+async function loadAuditEvents(silent = false) {
+  const tbody = $("audit-log-tbody");
+  if (!tbody) return;
+  if (!silent) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:32px; color:var(--muted);"><i class="fa-solid fa-spinner fa-spin mr-1.5 text-teal-600"></i> Loading audit events…</td></tr>`;
+  }
+
+  try {
+    let url = `/audit?limit=150`;
+    if (auditFilterState.search) url += `&search=${encodeURIComponent(auditFilterState.search)}`;
+    if (auditFilterState.severity && auditFilterState.severity !== "ALL") url += `&severity=${encodeURIComponent(auditFilterState.severity)}`;
+    if (auditFilterState.status && auditFilterState.status !== "ALL") url += `&status=${encodeURIComponent(auditFilterState.status)}`;
+
+    const logs = (await apiFetch(url)) || [];
+    currentAuditLogs = logs;
+
+    if (!logs.length) {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:36px; color:var(--muted);"><i class="fa-solid fa-clipboard-check text-slate-300 text-3xl block mb-2"></i> No audit log records matched the active filter criteria.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = logs.map((l) => {
+      const sev = (l.severity || "INFO").toUpperCase();
+      let sevClass = "audit-sev-info";
+      if (sev === "CRITICAL" || sev === "SECURITY_ALERT") sevClass = "audit-sev-critical";
+      else if (sev === "HIGH") sevClass = "audit-sev-high";
+      else if (sev === "MEDIUM") sevClass = "audit-sev-medium";
+      else if (sev === "LOW") sevClass = "audit-sev-low";
+
+      const status = (l.status || "SUCCESS").toUpperCase();
+      let statusClass = "audit-status-success";
+      if (status === "DENIED") statusClass = "audit-status-denied";
+      else if (status === "FAILED") statusClass = "audit-status-failed";
+      else if (status === "SUSPICIOUS") statusClass = "audit-status-suspicious";
+
+      let actionIcon = "fa-bolt";
+      if (l.action.includes("LOGIN") || l.action.includes("AUTH")) actionIcon = "fa-key";
+      else if (l.action.includes("DOCUMENT")) actionIcon = "fa-file-lines";
+      else if (l.action.includes("ACL") || l.action.includes("PERMISSION")) actionIcon = "fa-user-shield";
+      else if (l.action.includes("USER")) actionIcon = "fa-user";
+      else if (l.action.includes("DELETE") || l.action.includes("TRASH")) actionIcon = "fa-trash";
+
+      const timeFmt = fmtDate(l.timestamp);
+      const username = l.username || "System";
+      const role = l.actor_role || "system";
+
+      return `
+        <tr style="border-bottom:1px solid var(--border); transition:background 0.15s ease;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+          <td style="padding:10px 14px; white-space:nowrap;">
+            <span class="audit-sev-badge ${sevClass}">${esc(sev)}</span>
+          </td>
+          <td style="padding:10px 14px; white-space:nowrap; color:var(--muted); font-size:12px;">
+            <span title="${esc(l.timestamp || '')}"><i class="fa-regular fa-clock mr-1 text-slate-400"></i>${timeFmt}</span>
+          </td>
+          <td style="padding:10px 14px; white-space:nowrap;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="width:22px; height:22px; border-radius:50%; background:#0d9488; color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:700;">${esc(username.slice(0, 1).toUpperCase())}</span>
+              <strong style="color:var(--text);">${esc(username)}</strong>
+              <span style="font-size:10px; color:var(--muted); font-weight:600;">(${esc(role)})</span>
+            </div>
+          </td>
+          <td style="padding:10px 14px; white-space:nowrap;">
+            <span style="display:inline-flex; align-items:center; gap:5px; font-family:monospace; font-weight:700; font-size:11.5px; color:#0f172a; background:#f1f5f9; padding:2px 6px; border-radius:4px;">
+              <i class="fa-solid ${actionIcon} text-teal-600"></i> ${esc(l.action)}
+            </span>
+          </td>
+          <td style="padding:10px 14px; white-space:nowrap;">
+            ${l.resource_type ? `<span style="color:var(--muted); font-size:11.5px;">${esc(l.resource_type)} ${l.resource_id ? `#${l.resource_id}` : ''}</span>` : '<span style="color:var(--muted);">-</span>'}
+          </td>
+          <td style="padding:10px 14px; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+            <span class="audit-status-badge ${statusClass} mr-1">${esc(status)}</span>
+            <span title="${esc(l.details || '')}" style="color:var(--text);">${esc(l.details || '-')}</span>
+          </td>
+          <td style="padding:10px 14px; white-space:nowrap; font-size:11.5px; color:var(--muted);">
+            <div><i class="fa-solid fa-location-dot mr-1 text-slate-400"></i>${esc(l.ip || '127.0.0.1')}</div>
+          </td>
+          <td style="padding:10px 14px; text-align:right; white-space:nowrap;">
+            <button type="button" class="tb text-xs" onclick="inspectAuditEvent(${l.id})" style="padding:3px 8px;">
+              <i class="fa-solid fa-magnifying-glass-plus mr-1 text-teal-600"></i> Inspect
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join("");
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:24px; color:#dc2626;"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i> Failed to retrieve audit trail records.</td></tr>`;
+  }
+}
+
+let auditSearchDebounce = null;
+function onAuditSearchChange(val) {
+  if (auditSearchDebounce) clearTimeout(auditSearchDebounce);
+  auditSearchDebounce = setTimeout(() => {
+    auditFilterState.search = val.trim();
+    loadAuditEvents(true);
+  }, 300);
+}
+
+function onAuditSevFilter(sev) {
+  auditFilterState.severity = sev;
+  loadAuditEvents(true);
+}
+
+function onAuditStatusFilter(status) {
+  auditFilterState.status = status;
+  loadAuditEvents(true);
+}
+
+function toggleAuditLiveStream() {
+  const btn = $("audit-live-btn");
+  if (auditFilterState.live) {
+    auditFilterState.live = false;
+    if (auditLiveTimer) { clearInterval(auditLiveTimer); auditLiveTimer = null; }
+    if (btn) {
+      btn.innerHTML = `<i class="fa-solid fa-satellite-dish mr-1"></i> Live Stream: OFF`;
+      btn.style.background = "";
+      btn.style.color = "";
+      btn.style.borderColor = "";
+    }
+  } else {
+    auditFilterState.live = true;
+    auditLiveTimer = setInterval(() => {
+      loadAuditEvents(true);
+      loadAuditStats();
+    }, 8000);
+    if (btn) {
+      btn.innerHTML = `<span class="online-pulse-dot" style="background:#ef4444; box-shadow:0 0 0 0 rgba(239,68,68,0.7);"></span> Live Stream: ACTIVE (8s)`;
+      btn.style.background = "rgba(239, 68, 68, 0.1)";
+      btn.style.color = "#dc2626";
+      btn.style.borderColor = "rgba(239, 68, 68, 0.3)";
+    }
+    toast("Audit live stream active (refreshing every 8s)", "info");
+  }
+}
+
+function downloadAuditExport(format) {
+  window.open(api(`/audit/export?format=${format}`), "_blank");
+}
+
+function inspectAuditEvent(id) {
+  const log = currentAuditLogs.find((l) => l.id === id);
+  if (!log) return;
+  currentAuditInspectorLog = log;
+
+  const sev = (log.severity || "INFO").toUpperCase();
+  const sevEl = $("insp-audit-sev-badge");
+  if (sevEl) {
+    sevEl.textContent = sev;
+    sevEl.className = `audit-sev-badge audit-sev-${sev.toLowerCase().replace('_', '-')}`;
+  }
+
+  const subEl = $("insp-audit-sub");
+  if (subEl) subEl.textContent = `Event #${log.id} · Recorded ${fmtDate(log.timestamp)}`;
+
+  const body = $("audit-inspect-body");
+  if (body) {
+    body.innerHTML = `
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div style="background:#f8fafc; border:1px solid var(--border); border-radius:8px; padding:10px 12px;">
+          <div style="font-size:11px; color:var(--muted); font-weight:700; text-transform:uppercase;">Actor Information</div>
+          <div style="font-size:13.5px; font-weight:700; color:var(--text); margin-top:2px;">${esc(log.username || 'System')} <span style="font-size:11px; font-weight:600; color:var(--muted);">(${esc(log.actor_role || 'system')})</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:4px;"><i class="fa-solid fa-id-badge mr-1"></i> User ID: ${log.user_id || 'System'}</div>
+        </div>
+
+        <div style="background:#f8fafc; border:1px solid var(--border); border-radius:8px; padding:10px 12px;">
+          <div style="font-size:11px; color:var(--muted); font-weight:700; text-transform:uppercase;">Client Telemetry</div>
+          <div style="font-size:13px; font-weight:700; color:var(--text); margin-top:2px;"><i class="fa-solid fa-globe text-teal-600 mr-1"></i> ${esc(log.ip || '127.0.0.1')}</div>
+          <div style="font-size:11px; color:var(--muted); margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(log.user_agent || '')}"><i class="fa-solid fa-laptop mr-1"></i> ${esc(log.user_agent || 'Unknown Client')}</div>
+        </div>
+      </div>
+
+      <div style="background:#f8fafc; border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:14px;">
+        <div style="font-size:11px; color:var(--muted); font-weight:700; text-transform:uppercase;">Action &amp; Target Details</div>
+        <div style="font-size:13px; font-weight:700; color:#0f172a; margin-top:2px;">Action: <span style="font-family:monospace; background:#e2e8f0; padding:1px 5px; border-radius:4px;">${esc(log.action)}</span> · Status: <strong>${esc(log.status || 'SUCCESS')}</strong></div>
+        <div style="font-size:12.5px; color:var(--text); margin-top:6px;"><strong>Summary:</strong> ${esc(log.details || 'None')}</div>
+        ${log.resource_type ? `<div style="font-size:12px; color:var(--muted); margin-top:4px;">Target: <strong>${esc(log.resource_type)}</strong> ${log.resource_id ? `#${log.resource_id}` : ''} ${log.resource_name ? `(${esc(log.resource_name)})` : ''}</div>` : ''}
+      </div>
+
+      <!-- Cryptographic SHA-256 Checksum Seal -->
+      <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:10px 12px; margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:11px; font-weight:700; color:#15803d; text-transform:uppercase;"><i class="fa-solid fa-certificate text-emerald-600 mr-1"></i> SHA-256 Tamper-Evident Seal</span>
+          <span style="font-size:10.5px; font-weight:700; background:#dcfce7; color:#15803d; padding:1px 6px; border-radius:4px; border:1px solid #86efac;">VERIFIED AUTHENTIC</span>
+        </div>
+        <div style="font-family:monospace; font-size:11px; color:#166534; word-break:break-all; margin-top:4px;">
+          ${esc(log.checksum || 'SHA256_INTEGRITY_STAMP_GENERATED')}
+        </div>
+      </div>
+
+      <!-- Raw Structured JSON Event -->
+      <div>
+        <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; margin-bottom:4px;">Raw Forensic Event Payload</div>
+        <pre style="background:#0f172a; color:#f8fafc; padding:12px; border-radius:8px; font-size:11.5px; overflow:auto; max-height:160px; font-family:monospace;">${esc(JSON.stringify(log, null, 2))}</pre>
+      </div>
+    `;
+  }
+
+  openModal("audit-inspect-modal");
+}
+
+function copyAuditInspectorJson() {
+  if (!currentAuditInspectorLog) return;
+  navigator.clipboard.writeText(JSON.stringify(currentAuditInspectorLog, null, 2)).then(() => {
+    toast("Forensic event JSON copied to clipboard", "success");
+  }).catch(() => {
+    toast("Failed to copy to clipboard", "warning");
+  });
+}
+

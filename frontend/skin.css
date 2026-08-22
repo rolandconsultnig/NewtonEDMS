@@ -1385,3 +1385,105 @@ html[data-density="comfortable"] body { font-size: 13px; }
 .set-card input, .set-card select { width: 100%; box-sizing: border-box; border: 1px solid var(--border); padding: 4px 6px; font: 12px var(--font); }
 .set-card ul { list-style: none; margin: 0; padding: 0; font-size: 12px; }
 .set-card li { padding: 3px 0; border-bottom: 1px solid #eee; }
+
+/* Real-Time Online Presence Indicator */
+.online-users-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #059669;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.online-users-pill:hover {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.5);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.15);
+}
+.online-pulse-dot {
+  width: 8px;
+  height: 8px;
+  background: #10b981;
+  border-radius: 50%;
+  position: relative;
+  display: inline-block;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: pulse-presence 2s infinite cubic-bezier(0.66, 0, 0, 1);
+}
+@keyframes pulse-presence {
+  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+/* Enterprise Audit Trail Dashboard Styles */
+.audit-kpi-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+.audit-kpi-card:hover {
+  box-shadow: var(--shadow);
+  transform: translateY(-2px);
+}
+.audit-kpi-card .kpi-num {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.1;
+  margin-top: 4px;
+}
+.audit-kpi-card .kpi-lbl {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+.audit-sev-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.audit-sev-info { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+.audit-sev-low { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+.audit-sev-medium { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+.audit-sev-high { background: #ffedd5; color: #c2410c; border: 1px solid #fed7aa; }
+.audit-sev-critical { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; animation: pulse-critical 2s infinite; }
+.audit-sev-security { background: #fae8ff; color: #86198f; border: 1px solid #f0abfc; }
+
+@keyframes pulse-critical {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  70% { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.audit-status-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.audit-status-success { background: #dcfce7; color: #15803d; }
+.audit-status-denied { background: #fee2e2; color: #b91c1c; }
+.audit-status-failed { background: #fef2f2; color: #dc2626; }
+.audit-status-suspicious { background: #fef08a; color: #854d0e; }
+

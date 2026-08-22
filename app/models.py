@@ -65,6 +65,9 @@ class User(Base):
     password_changed_at = Column(DateTime, default=now)
     failed_logins = Column(Integer, default=0)
     locked_until = Column(DateTime)
+    last_active_at = Column(DateTime)
+    last_active_ip = Column(String)
+    last_active_ua = Column(String)
 
 
 class BiometricCredential(Base):
@@ -247,12 +250,20 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    action = Column(String, nullable=False)
-    resource_type = Column(String)
-    resource_id = Column(Integer)
-    details = Column(Text)
-    ip = Column(String)
-    timestamp = Column(DateTime, default=now)
+    username = Column(String, index=True, nullable=True)
+    actor_role = Column(String, nullable=True)
+    action = Column(String, index=True, nullable=False)
+    resource_type = Column(String, index=True, nullable=True)
+    resource_id = Column(Integer, nullable=True)
+    resource_name = Column(String, nullable=True)
+    severity = Column(String, default="INFO", index=True, nullable=False)  # INFO, LOW, MEDIUM, HIGH, CRITICAL, SECURITY_ALERT
+    status = Column(String, default="SUCCESS", index=True, nullable=False)  # SUCCESS, DENIED, FAILED, SUSPICIOUS
+    details = Column(Text, nullable=True)
+    details_json = Column(JSON, default=dict)
+    ip = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+    checksum = Column(String, nullable=True)
+    timestamp = Column(DateTime, default=now, index=True)
 
 
 class MetadataTemplate(Base):

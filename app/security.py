@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db, now
 from app.models import ApiKey, RevokedToken, User
+from app.presence import presence_manager
 
 # auto_error=False so we can fall back to the auth cookie before raising.
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
@@ -126,17 +127,42 @@ def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    user: User | None = None
     raw = token or request.cookies.get(settings.cookie_name)
     if raw:
         user = _user_from_jwt(raw, db)
-        if user:
-            return user
-    api_key = _raw_api_key(request)
-    if api_key:
-        user = _user_from_api_key(api_key, db)
-        if user:
-            return user
-    raise credentials_exception
+    if not user:
+        api_key = _raw_api_key(request)
+        if api_key:
+            user = _user_from_api_key(api_key, db)
+    if not user:
+        raise credentials_exception
+
+    # Update real-time presence
+    try:
+        ip = request.headers.get("x-forwarded-for")
+        if ip:
+            ip = ip.split(",")[0].strip()
+        elif request.client:
+            ip = request.client.host
+        else:
+            ip = "127.0.0.1"
+        ua = request.headers.get("user-agent", "")
+        path = request.url.path if hasattr(request, "url") else "/"
+        presence_manager.touch(
+            user_id=user.id,
+            username=user.username,
+            role=user.role,
+            email=user.email,
+            avatar=user.avatar,
+            ip=ip,
+            user_agent=ua,
+            current_path=path,
+        )
+    except Exception:
+        pass
+
+    return user
 
 
 def get_optional_user(
