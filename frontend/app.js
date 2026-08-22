@@ -2141,13 +2141,17 @@ window.markAllNotifsRead = async function() {
 async function updateNotifBadge() {
   try {
     const unread = (await apiFetch("/notifications?unread_only=true")) || [];
+    const count = unread.length;
+    const txt = count > 99 ? "99+" : count.toString();
     const badge = $("notif-badge");
-    if (!badge) return;
-    if (unread.length) {
-      badge.textContent = unread.length > 99 ? "99+" : unread.length;
-      badge.classList.remove("is-hidden");
-    } else {
-      badge.classList.add("is-hidden");
+    if (badge) {
+      if (count) { badge.textContent = txt; badge.classList.remove("is-hidden"); }
+      else badge.classList.add("is-hidden");
+    }
+    const badgeDash = $("notif-badge-dash");
+    if (badgeDash) {
+      if (count) { badgeDash.textContent = txt; badgeDash.classList.remove("is-hidden"); }
+      else badgeDash.classList.add("is-hidden");
     }
   } catch (e) { /* ignore */ }
 }

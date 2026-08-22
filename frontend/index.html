@@ -18,10 +18,10 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:image" content="/static/og-image.png" />
 
-  <link rel="stylesheet" href="/static/tailwind.css?v=newton-v9" />
+  <link rel="stylesheet" href="/static/tailwind.css?v=newton-v10" />
   <link rel="stylesheet" href="/static/fontawesome/all.min.css" />
-  <link rel="stylesheet" href="/static/skin.css?v=newton-v9" />
-  <link rel="stylesheet" href="/static/landing.css?v=newton-v9" />
+  <link rel="stylesheet" href="/static/skin.css?v=newton-v10" />
+  <link rel="stylesheet" href="/static/landing.css?v=newton-v10" />
 </head>
 <body>
 
@@ -29,8 +29,8 @@
     <div class="yh-split">
       <section class="yh-pane-story">
         <div class="yh-bubbles" aria-hidden="true"><span></span><span></span><span></span></div>
-        <a class="yh-wordmark" href="#top" style="display:inline-flex; align-items:center; gap:10px; margin-bottom:12px;">
-          <img src="/static/logo.png" alt="NewtonEDMS" style="height:108px; width:auto; max-width:480px; object-fit:contain;" />
+        <a class="yh-wordmark" href="#top" style="display:inline-flex; align-items:center; gap:10px; margin-bottom:18px;">
+          <img src="/static/logo.png" alt="NewtonEDMS" style="height:216px; width:auto; max-width:600px; object-fit:contain;" />
         </a>
         <img class="yh-hero" src="/static/img/landing-hero.jpg" alt="Teams working in a NewtonEDMS document workspace" />
         <span class="yh-kicker">Newton Enterprise Document Management System</span>
@@ -77,22 +77,22 @@
   <div id="app-shell" class="is-hidden">
     <header id="app-header">
       <button type="button" class="logo-head" onclick="navTo('home')" title="Dashboard">
-        <img src="/static/logo.png" alt="Logo" class="logo-img" style="height:48px; width:auto; max-width:220px; object-fit:contain;" />
+        <img src="/static/logo.png" alt="Logo" class="logo-img" style="height:62px; width:auto; max-width:280px; object-fit:contain;" />
       </button>
       <nav id="product-tabs">
-        <button class="ptab" data-tab="dashboard" onclick="navTo('home')" data-i18n="nav.dashboard">Dashboard</button>
-        <button class="ptab" data-tab="documents" onclick="navTo('folders')" data-i18n="nav.documents">Documents</button>
-        <button class="ptab" data-tab="search" onclick="navTo('search')" data-i18n="nav.search">Search</button>
-        <button class="ptab" data-tab="tasks" onclick="navTo('tasks')"><i class="fa-solid fa-list-check mr-1"></i>Tasks</button>
-        <button class="ptab" data-tab="calendar" onclick="navTo('calendar')"><i class="fa-solid fa-calendar mr-1"></i>Calendar</button>
-        <button class="ptab is-hidden" id="admin-btn" data-tab="admin" onclick="navTo('admin')" data-i18n="nav.admin">Administration</button>
+        <button class="ptab" data-tab="dashboard" onclick="navTo('home')" data-i18n="nav.dashboard"><i class="fa-solid fa-gauge-high mr-1.5 text-teal-600"></i>Dashboard</button>
+        <button class="ptab" data-tab="documents" onclick="navTo('folders')" data-i18n="nav.documents"><i class="fa-solid fa-folder-open mr-1.5 text-sky-600"></i>Documents</button>
+        <button class="ptab" data-tab="search" onclick="navTo('search')" data-i18n="nav.search"><i class="fa-solid fa-magnifying-glass-chart mr-1.5 text-indigo-600"></i>Search</button>
+        <button class="ptab" data-tab="tasks" onclick="navTo('tasks')"><i class="fa-solid fa-list-check mr-1.5 text-emerald-600"></i>Tasks</button>
+        <button class="ptab" data-tab="calendar" onclick="navTo('calendar')"><i class="fa-solid fa-calendar-days mr-1.5 text-blue-600"></i>Calendar</button>
+        <button class="ptab is-hidden" id="admin-btn" data-tab="admin" onclick="navTo('admin')" data-i18n="nav.admin"><i class="fa-solid fa-sliders mr-1.5 text-violet-600"></i>Administration</button>
       </nav>
       <div class="header-search">
         <i class="fa-solid fa-magnifying-glass"></i>
         <input id="search-input" type="search" placeholder="Search documents…  /" onkeydown="if(event.key==='Enter')runSearch()" />
       </div>
       <div class="header-actions">
-        <button type="button" class="icon-btn primary" onclick="openUploadModal()" title="Upload (U)"><i class="fa-solid fa-upload"></i></button>
+        <button type="button" class="icon-btn primary" onclick="openUploadModal()" title="Upload Document (U)"><i class="fa-solid fa-cloud-arrow-up"></i></button>
 
         <!-- Top Right Corner Notification Bell Dropdown -->
         <div class="drop" id="notif-drop">
@@ -117,11 +117,11 @@
         <div class="drop" id="tools-drop">
           <button type="button" class="icon-btn" onclick="toggleDrop('tools-drop')" title="Tools"><i class="fa-solid fa-ellipsis"></i></button>
           <div class="drop-menu">
-            <button onclick="openScanModal(); closeDrops()">Scanner</button>
-            <button onclick="openRagChat(); closeDrops()">Ask documents</button>
-            <button onclick="openFolderModal(); closeDrops()">New folder</button>
-            <button onclick="exportFolder(); closeDrops()">Export folder ZIP</button>
-            <button onclick="saveCurrentQuery(); closeDrops()">Save search</button>
+            <button onclick="openScanModal(); closeDrops()"><i class="fa-solid fa-camera text-rose-500 mr-2"></i>Scanner</button>
+            <button onclick="openRagChat(); closeDrops()"><i class="fa-solid fa-wand-magic-sparkles text-purple-600 mr-2"></i>Ask documents (AI)</button>
+            <button onclick="openFolderModal(); closeDrops()"><i class="fa-solid fa-folder-plus text-amber-500 mr-2"></i>New folder</button>
+            <button onclick="exportFolder(); closeDrops()"><i class="fa-solid fa-file-zipper text-blue-500 mr-2"></i>Export folder ZIP</button>
+            <button onclick="saveCurrentQuery(); closeDrops()"><i class="fa-solid fa-bookmark text-teal-500 mr-2"></i>Save search</button>
           </div>
         </div>
         <div class="drop" id="account-drop">
@@ -130,10 +130,10 @@
             <span id="user-info"></span>
           </button>
           <div class="drop-menu drop-menu-right">
-            <button onclick="navTo('settings'); closeDrops()">Settings</button>
-            <button onclick="toggleTheme(); closeDrops()">Toggle theme</button>
+            <button onclick="navTo('settings'); closeDrops()"><i class="fa-solid fa-gear text-slate-500 mr-2"></i>Settings</button>
+            <button onclick="toggleTheme(); closeDrops()"><i class="fa-solid fa-circle-half-stroke text-indigo-500 mr-2"></i>Toggle theme</button>
             <div class="sep"></div>
-            <button onclick="logout()">Sign out</button>
+            <button onclick="logout()"><i class="fa-solid fa-arrow-right-from-bracket text-red-500 mr-2"></i>Sign out</button>
           </div>
         </div>
       </div>
@@ -143,47 +143,47 @@
       <aside id="left-pane">
         <div id="docs-stack" class="stack">
           <div class="section open" data-sec="browser">
-            <div class="section-h" onclick="openSection('docs-stack','browser')"><i class="fa-solid fa-caret-down"></i> Browser</div>
+            <div class="section-h" onclick="openSection('docs-stack','browser')"><i class="fa-solid fa-caret-down"></i> <i class="fa-solid fa-folder-tree text-amber-500 ml-1 mr-1"></i> Browser</div>
             <div class="section-b">
               <div id="folder-tree"></div>
               <div id="folder-tools" class="is-hidden">
-                <button onclick="openFolderModal()"><i class="fa-solid fa-plus"></i> New</button>
-                <button onclick="renameFolder()"><i class="fa-solid fa-pen"></i> Rename</button>
-                <button onclick="openFolderAcl()"><i class="fa-solid fa-lock"></i> Security</button>
-                <button class="danger" onclick="deleteFolder()"><i class="fa-solid fa-trash"></i> Delete</button>
+                <button onclick="openFolderModal()"><i class="fa-solid fa-folder-plus text-amber-500 mr-1"></i> New</button>
+                <button onclick="renameFolder()"><i class="fa-solid fa-pen-to-square text-blue-500 mr-1"></i> Rename</button>
+                <button onclick="openFolderAcl()"><i class="fa-solid fa-shield-halved text-teal-500 mr-1"></i> Security</button>
+                <button class="danger" onclick="deleteFolder()"><i class="fa-solid fa-trash-can mr-1"></i> Delete</button>
               </div>
               <div id="folder-acl" class="is-hidden mt-2 p-2 text-xs"></div>
             </div>
           </div>
           <div class="section" data-sec="bookmarks">
-            <div class="section-h" onclick="openSection('docs-stack','bookmarks')"><i class="fa-solid fa-caret-right"></i> Bookmarks</div>
+            <div class="section-h" onclick="openSection('docs-stack','bookmarks')"><i class="fa-solid fa-caret-right"></i> <i class="fa-solid fa-star text-amber-400 ml-1 mr-1"></i> Bookmarks</div>
             <div class="section-b">
               <div id="bookmark-list"></div>
             </div>
           </div>
           <div class="section" data-sec="trash">
-            <div class="section-h" onclick="openSection('docs-stack','trash')"><i class="fa-solid fa-caret-right"></i> Trash</div>
+            <div class="section-h" onclick="openSection('docs-stack','trash')"><i class="fa-solid fa-caret-right"></i> <i class="fa-solid fa-trash-can text-red-400 ml-1 mr-1"></i> Trash</div>
             <div class="section-b">
               <div id="trash-list"></div>
-              <button class="tb" onclick="emptyTrash()" style="margin-top:8px">Empty trash</button>
+              <button class="tb" onclick="emptyTrash()" style="margin-top:8px"><i class="fa-solid fa-broom mr-1 text-red-500"></i> Empty trash</button>
             </div>
           </div>
         </div>
         <div id="search-stack" class="stack is-hidden">
           <div class="section open" data-sec="fulltext">
-            <div class="section-h" onclick="openSection('search-stack','fulltext')"><i class="fa-solid fa-caret-down"></i> Full text</div>
+            <div class="section-h" onclick="openSection('search-stack','fulltext')"><i class="fa-solid fa-caret-down"></i> <i class="fa-solid fa-align-left text-blue-500 ml-1 mr-1"></i> Full text</div>
             <div class="section-b">
               <form class="search-form" onsubmit="event.preventDefault(); runSearch()">
                 <label>Expression</label>
                 <input id="ft-q" type="text" placeholder="invoice acme" />
                 <label>Folder</label>
                 <select id="ft-folder"><option value="">All folders</option></select>
-                <button type="submit">Search</button>
+                <button type="submit"><i class="fa-solid fa-magnifying-glass mr-1"></i> Search</button>
               </form>
             </div>
           </div>
           <div class="section" data-sec="parametric">
-            <div class="section-h" onclick="openSection('search-stack','parametric')"><i class="fa-solid fa-caret-right"></i> Parameters</div>
+            <div class="section-h" onclick="openSection('search-stack','parametric')"><i class="fa-solid fa-caret-right"></i> <i class="fa-solid fa-filter text-purple-500 ml-1 mr-1"></i> Parameters</div>
             <div class="section-b">
               <form class="search-form" onsubmit="event.preventDefault(); runParametric()">
                 <label>Status</label>
@@ -194,20 +194,20 @@
                 <input id="p-field" placeholder="value" />
                 <label><input type="checkbox" id="p-locked" /> Locked</label>
                 <label><input type="checkbox" id="p-imm" /> Immutable</label>
-                <button type="submit">Search</button>
+                <button type="submit"><i class="fa-solid fa-filter mr-1"></i> Search</button>
               </form>
             </div>
           </div>
           <div class="section" data-sec="tags">
-            <div class="section-h" onclick="openSection('search-stack','tags')"><i class="fa-solid fa-caret-right"></i> Tags</div>
+            <div class="section-h" onclick="openSection('search-stack','tags')"><i class="fa-solid fa-caret-right"></i> <i class="fa-solid fa-tags text-teal-500 ml-1 mr-1"></i> Tags</div>
             <div class="section-b"><div id="tag-cloud"></div></div>
           </div>
           <div class="section" data-sec="saved">
-            <div class="section-h" onclick="openSection('search-stack','saved')"><i class="fa-solid fa-caret-right"></i> Saved searches</div>
+            <div class="section-h" onclick="openSection('search-stack','saved')"><i class="fa-solid fa-caret-right"></i> <i class="fa-solid fa-clock-rotate-left text-sky-500 ml-1 mr-1"></i> Saved searches</div>
             <div class="section-b"><div id="saved-list"></div></div>
           </div>
           <div class="section" data-sec="facets">
-            <div class="section-h" onclick="openSection('search-stack','facets')"><i class="fa-solid fa-caret-right"></i> Facets</div>
+            <div class="section-h" onclick="openSection('search-stack','facets')"><i class="fa-solid fa-caret-right"></i> <i class="fa-solid fa-layer-group text-emerald-500 ml-1 mr-1"></i> Facets</div>
             <div class="section-b"><div id="facet-list"></div></div>
           </div>
         </div>
@@ -217,116 +217,116 @@
       <aside id="admin-nav" class="is-hidden">
         <input id="admin-filter" type="search" placeholder="Filter administration…" oninput="filterAdminNav(this.value)" />
         <div class="admin-block">
-          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-caret-down"></i> People</button>
-          <button class="admin-item active" data-admin="users" onclick="adminTab('users')">Users &amp; roles</button>
-          <button class="admin-item" data-admin="groups" onclick="adminTab('groups')">Groups</button>
-          <button class="admin-item" data-admin="sessions" onclick="adminTab('sessions')">Sessions &amp; logins</button>
+          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-users-gear text-blue-600 mr-1.5"></i> People &amp; Access</button>
+          <button class="admin-item active" data-admin="users" onclick="adminTab('users')"><i class="fa-solid fa-user-shield text-blue-500 mr-1.5"></i> Users &amp; roles</button>
+          <button class="admin-item" data-admin="groups" onclick="adminTab('groups')"><i class="fa-solid fa-users text-indigo-500 mr-1.5"></i> Groups</button>
+          <button class="admin-item" data-admin="sessions" onclick="adminTab('sessions')"><i class="fa-solid fa-key text-amber-500 mr-1.5"></i> Sessions &amp; logins</button>
         </div>
         <div class="admin-block">
-          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-caret-down"></i> Classification</button>
-          <button class="admin-item" data-admin="intelligence" onclick="adminTab('intelligence')">Tags &amp; fields</button>
-          <button class="admin-item" data-admin="templates" onclick="adminTab('templates')">Metadata templates</button>
-          <button class="admin-item" data-admin="folder-templates" onclick="adminTab('folder-templates')">Folder templates</button>
-          <button class="admin-item" data-admin="naming" onclick="adminTab('naming')">Document numbering</button>
-          <button class="admin-item" data-admin="classifier" onclick="adminTab('classifier')">Auto-tag classifier</button>
+          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-tags text-teal-600 mr-1.5"></i> Classification</button>
+          <button class="admin-item" data-admin="intelligence" onclick="adminTab('intelligence')"><i class="fa-solid fa-tag text-teal-500 mr-1.5"></i> Tags &amp; fields</button>
+          <button class="admin-item" data-admin="templates" onclick="adminTab('templates')"><i class="fa-solid fa-table-columns text-cyan-500 mr-1.5"></i> Metadata templates</button>
+          <button class="admin-item" data-admin="folder-templates" onclick="adminTab('folder-templates')"><i class="fa-solid fa-folder-tree text-amber-500 mr-1.5"></i> Folder templates</button>
+          <button class="admin-item" data-admin="naming" onclick="adminTab('naming')"><i class="fa-solid fa-hashtag text-slate-500 mr-1.5"></i> Document numbering</button>
+          <button class="admin-item" data-admin="classifier" onclick="adminTab('classifier')"><i class="fa-solid fa-brain text-purple-500 mr-1.5"></i> Auto-tag classifier</button>
         </div>
         <div class="admin-block">
-          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-caret-down"></i> Process</button>
-          <button class="admin-item" data-admin="workflows" onclick="adminTab('workflows')">Review workflows</button>
-          <button class="admin-item" data-admin="bpmn" onclick="adminTab('bpmn')">BPMN cases</button>
-          <button class="admin-item" data-admin="rules" onclick="adminTab('rules')">Automation rules</button>
-          <button class="admin-item" data-admin="forms" onclick="adminTab('forms')">Capture forms</button>
-          <button class="admin-item" data-admin="zones" onclick="adminTab('zones')">IDP zones</button>
+          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-diagram-project text-emerald-600 mr-1.5"></i> Process &amp; BPMN</button>
+          <button class="admin-item" data-admin="workflows" onclick="adminTab('workflows')"><i class="fa-solid fa-code-fork text-emerald-500 mr-1.5"></i> Review workflows</button>
+          <button class="admin-item" data-admin="bpmn" onclick="adminTab('bpmn')"><i class="fa-solid fa-network-wired text-green-500 mr-1.5"></i> BPMN cases</button>
+          <button class="admin-item" data-admin="rules" onclick="adminTab('rules')"><i class="fa-solid fa-bolt text-amber-500 mr-1.5"></i> Automation rules</button>
+          <button class="admin-item" data-admin="forms" onclick="adminTab('forms')"><i class="fa-solid fa-rectangle-list text-teal-500 mr-1.5"></i> Capture forms</button>
+          <button class="admin-item" data-admin="zones" onclick="adminTab('zones')"><i class="fa-solid fa-crop-simple text-blue-500 mr-1.5"></i> IDP zones</button>
         </div>
         <div class="admin-block">
-          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-scale-balanced text-amber-500"></i> Legal &amp; Matters</button>
-          <button class="admin-item" data-admin="legal" onclick="adminTab('legal')">Matter Portfolio</button>
-          <button class="admin-item" data-admin="legal-assembly" onclick="openLegalAssemblyModal()">Document Assembly</button>
-          <button class="admin-item" data-admin="legal-bates" onclick="openLegalBatesModal()">Bates Stamping</button>
-          <button class="admin-item" data-admin="legal-compare" onclick="openLegalCompareModal()">Redlining &amp; Diff</button>
+          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-scale-balanced text-amber-600 mr-1.5"></i> Legal &amp; Matters</button>
+          <button class="admin-item" data-admin="legal" onclick="adminTab('legal')"><i class="fa-solid fa-briefcase text-amber-500 mr-1.5"></i> Matter Portfolio</button>
+          <button class="admin-item" data-admin="legal-assembly" onclick="openLegalAssemblyModal()"><i class="fa-solid fa-layer-group text-amber-500 mr-1.5"></i> Document Assembly</button>
+          <button class="admin-item" data-admin="legal-bates" onclick="openLegalBatesModal()"><i class="fa-solid fa-stamp text-amber-500 mr-1.5"></i> Bates Stamping</button>
+          <button class="admin-item" data-admin="legal-compare" onclick="openLegalCompareModal()"><i class="fa-solid fa-highlighter text-amber-500 mr-1.5"></i> Redlining &amp; Diff</button>
         </div>
         <div class="admin-block">
-          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-file-invoice-dollar text-emerald-500"></i> Accounting &amp; AP</button>
-          <button class="admin-item" data-admin="accounting" onclick="adminTab('accounting')">Invoices &amp; 3-Way Match</button>
-          <button class="admin-item" data-admin="accounting-po" onclick="openAccountingPOModal()">Purchase Orders &amp; GRNs</button>
-          <button class="admin-item" data-admin="accounting-batch" onclick="openBatchBarcodeModal()">Barcode Batch Split</button>
-          <button class="admin-item" data-admin="accounting-peppol" onclick="openPeppolModal()">PEPPOL E-Invoicing</button>
-          <button class="admin-item" data-admin="accounting-audit" onclick="openAuditorPortalModal()">Auditor Portals</button>
+          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-file-invoice-dollar text-emerald-600 mr-1.5"></i> Accounting &amp; AP</button>
+          <button class="admin-item" data-admin="accounting" onclick="adminTab('accounting')"><i class="fa-solid fa-receipt text-emerald-500 mr-1.5"></i> Invoices &amp; 3-Way Match</button>
+          <button class="admin-item" data-admin="accounting-po" onclick="openAccountingPOModal()"><i class="fa-solid fa-cart-flatbed text-emerald-500 mr-1.5"></i> Purchase Orders &amp; GRNs</button>
+          <button class="admin-item" data-admin="accounting-batch" onclick="openBatchBarcodeModal()"><i class="fa-solid fa-barcode text-emerald-500 mr-1.5"></i> Barcode Batch Split</button>
+          <button class="admin-item" data-admin="accounting-peppol" onclick="openPeppolModal()"><i class="fa-solid fa-globe text-emerald-500 mr-1.5"></i> PEPPOL E-Invoicing</button>
+          <button class="admin-item" data-admin="accounting-audit" onclick="openAuditorPortalModal()"><i class="fa-solid fa-magnifying-glass text-emerald-500 mr-1.5"></i> Auditor Portals</button>
         </div>
         <div class="admin-block">
-          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-car-burst text-rose-500"></i> Insurance &amp; Claims</button>
-          <button class="admin-item" data-admin="insurance" onclick="adminTab('insurance')">Claims Docket &amp; FNOL</button>
-          <button class="admin-item" data-admin="insurance-policies" onclick="openInsurancePolicyModal()">Policy Portfolio</button>
-          <button class="admin-item" data-admin="insurance-idp" onclick="openInsuranceIDPModal()">IDP Claims Extraction</button>
-          <button class="admin-item" data-admin="insurance-portals" onclick="openClaimPortalModal()">Adjuster Portals</button>
+          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-shield-heart text-rose-600 mr-1.5"></i> Insurance &amp; Claims</button>
+          <button class="admin-item" data-admin="insurance" onclick="adminTab('insurance')"><i class="fa-solid fa-car-burst text-rose-500 mr-1.5"></i> Claims Docket &amp; FNOL</button>
+          <button class="admin-item" data-admin="insurance-policies" onclick="openInsurancePolicyModal()"><i class="fa-solid fa-file-signature text-rose-500 mr-1.5"></i> Policy Portfolio</button>
+          <button class="admin-item" data-admin="insurance-idp" onclick="openInsuranceIDPModal()"><i class="fa-solid fa-brain text-rose-500 mr-1.5"></i> IDP Claims Extraction</button>
+          <button class="admin-item" data-admin="insurance-portals" onclick="openClaimPortalModal()"><i class="fa-solid fa-user-check text-rose-500 mr-1.5"></i> Adjuster Portals</button>
         </div>
         <div class="admin-block">
-          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-notes-medical text-sky-500"></i> Healthcare &amp; EHR</button>
-          <button class="admin-item" data-admin="medical" onclick="adminTab('medical')">Master Patient Index</button>
-          <button class="admin-item" data-admin="medical-dicom" onclick="openDicomViewerModal()">DICOM &amp; PACS Imaging</button>
-          <button class="admin-item" data-admin="medical-hl7" onclick="openHL7StudioModal()">HL7 &amp; FHIR Studio</button>
-          <button class="admin-item" data-admin="medical-consent" onclick="openInformedConsentModal()">Informed Consents</button>
-          <button class="admin-item" data-admin="medical-bg" onclick="openBreakGlassModal()">Emergency Override</button>
+          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-heart-pulse text-sky-600 mr-1.5"></i> Healthcare &amp; EHR</button>
+          <button class="admin-item" data-admin="medical" onclick="adminTab('medical')"><i class="fa-solid fa-hospital-user text-sky-500 mr-1.5"></i> Master Patient Index</button>
+          <button class="admin-item" data-admin="medical-dicom" onclick="openDicomViewerModal()"><i class="fa-solid fa-x-ray text-sky-500 mr-1.5"></i> DICOM &amp; PACS Imaging</button>
+          <button class="admin-item" data-admin="medical-hl7" onclick="openHL7StudioModal()"><i class="fa-solid fa-dna text-sky-500 mr-1.5"></i> HL7 &amp; FHIR Studio</button>
+          <button class="admin-item" data-admin="medical-consent" onclick="openInformedConsentModal()"><i class="fa-solid fa-pen-nib text-sky-500 mr-1.5"></i> Informed Consents</button>
+          <button class="admin-item" data-admin="medical-bg" onclick="openBreakGlassModal()"><i class="fa-solid fa-kit-medical text-sky-500 mr-1.5"></i> Emergency Override</button>
         </div>
         <div class="admin-block">
-          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-caret-down"></i> Ingest</button>
-          <button class="admin-item" data-admin="imports" onclick="adminTab('imports')">Hot folders</button>
-          <button class="admin-item" data-admin="mailbox-tasks" onclick="adminTab('mailbox-tasks')">Mailbox import</button>
-          <button class="admin-item" data-admin="uploads" onclick="adminTab('uploads')">Anonymous upload URLs</button>
-          <button class="admin-item" data-admin="csv-import" onclick="adminTab('csv-import')">CSV import</button>
-          <button class="admin-item" data-admin="scan" onclick="adminTab('scan')">Scanner</button>
-          <button class="admin-item" data-admin="backup" onclick="adminTab('backup')">Backup &amp; restore</button>
+          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-cloud-arrow-down text-blue-600 mr-1.5"></i> Ingest &amp; Capture</button>
+          <button class="admin-item" data-admin="imports" onclick="adminTab('imports')"><i class="fa-solid fa-folder-arrow-up text-blue-500 mr-1.5"></i> Hot folders</button>
+          <button class="admin-item" data-admin="mailbox-tasks" onclick="adminTab('mailbox-tasks')"><i class="fa-solid fa-envelope-open-text text-blue-500 mr-1.5"></i> Mailbox import</button>
+          <button class="admin-item" data-admin="uploads" onclick="adminTab('uploads')"><i class="fa-solid fa-share-from-square text-blue-500 mr-1.5"></i> Anonymous upload URLs</button>
+          <button class="admin-item" data-admin="csv-import" onclick="adminTab('csv-import')"><i class="fa-solid fa-file-csv text-blue-500 mr-1.5"></i> CSV import</button>
+          <button class="admin-item" data-admin="scan" onclick="adminTab('scan')"><i class="fa-solid fa-camera text-blue-500 mr-1.5"></i> Scanner</button>
+          <button class="admin-item" data-admin="backup" onclick="adminTab('backup')"><i class="fa-solid fa-box-archive text-blue-500 mr-1.5"></i> Backup &amp; restore</button>
         </div>
         <div class="admin-block">
-          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-caret-down"></i> Integrations</button>
-          <button class="admin-item" data-admin="mail" onclick="adminTab('mail')">SMTP / IMAP accounts</button>
-          <button class="admin-item" data-admin="office" onclick="adminTab('office')">Microsoft Office</button>
-          <button class="admin-item" data-admin="connectors" onclick="adminTab('connectors')">Connectors</button>
-          <button class="admin-item" data-admin="ldap" onclick="adminTab('ldap')">LDAP / SAML</button>
-          <button class="admin-item" data-admin="archivelink" onclick="adminTab('archivelink')">SAP ArchiveLink</button>
-          <button class="admin-item" data-admin="protocols" onclick="adminTab('protocols')">WebDAV / CMIS / SOAP</button>
-          <button class="admin-item" data-admin="addons" onclick="adminTab('addons')">Addons</button>
+          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-network-wired text-purple-600 mr-1.5"></i> Integrations &amp; Cloud</button>
+          <button class="admin-item" data-admin="mail" onclick="adminTab('mail')"><i class="fa-solid fa-at text-purple-500 mr-1.5"></i> SMTP / IMAP accounts</button>
+          <button class="admin-item" data-admin="office" onclick="adminTab('office')"><i class="fa-solid fa-file-word text-purple-500 mr-1.5"></i> Microsoft Office</button>
+          <button class="admin-item" data-admin="connectors" onclick="adminTab('connectors')"><i class="fa-solid fa-plug text-purple-500 mr-1.5"></i> Connectors</button>
+          <button class="admin-item" data-admin="ldap" onclick="adminTab('ldap')"><i class="fa-solid fa-id-card text-purple-500 mr-1.5"></i> LDAP / SAML</button>
+          <button class="admin-item" data-admin="archivelink" onclick="adminTab('archivelink')"><i class="fa-solid fa-database text-purple-500 mr-1.5"></i> SAP ArchiveLink</button>
+          <button class="admin-item" data-admin="protocols" onclick="adminTab('protocols')"><i class="fa-solid fa-server text-purple-500 mr-1.5"></i> WebDAV / CMIS / SOAP</button>
+          <button class="admin-item" data-admin="addons" onclick="adminTab('addons')"><i class="fa-solid fa-puzzle-piece text-purple-500 mr-1.5"></i> Addons</button>
         </div>
         <div class="admin-block">
-          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-caret-down"></i> Storage &amp; jobs</button>
-          <button class="admin-item" data-admin="stores" onclick="adminTab('stores')">File stores</button>
-          <button class="admin-item" data-admin="ocr" onclick="adminTab('ocr')">OCR &amp; converters</button>
-          <button class="admin-item" data-admin="index" onclick="adminTab('index')">Search index</button>
-          <button class="admin-item" data-admin="jobs" onclick="adminTab('jobs')">Processing jobs</button>
-          <button class="admin-item" data-admin="scheduled" onclick="adminTab('scheduled')">Scheduled tasks</button>
-          <button class="admin-item" data-admin="cluster" onclick="adminTab('cluster')">Cluster</button>
+          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-server text-slate-600 mr-1.5"></i> Storage &amp; Jobs</button>
+          <button class="admin-item" data-admin="stores" onclick="adminTab('stores')"><i class="fa-solid fa-cubes text-slate-500 mr-1.5"></i> File stores</button>
+          <button class="admin-item" data-admin="ocr" onclick="adminTab('ocr')"><i class="fa-solid fa-eye text-slate-500 mr-1.5"></i> OCR &amp; converters</button>
+          <button class="admin-item" data-admin="index" onclick="adminTab('index')"><i class="fa-solid fa-magnifying-glass text-slate-500 mr-1.5"></i> Search index</button>
+          <button class="admin-item" data-admin="jobs" onclick="adminTab('jobs')"><i class="fa-solid fa-gears text-slate-500 mr-1.5"></i> Processing jobs</button>
+          <button class="admin-item" data-admin="scheduled" onclick="adminTab('scheduled')"><i class="fa-solid fa-clock text-slate-500 mr-1.5"></i> Scheduled tasks</button>
+          <button class="admin-item" data-admin="cluster" onclick="adminTab('cluster')"><i class="fa-solid fa-circle-nodes text-slate-500 mr-1.5"></i> Cluster</button>
         </div>
         <div class="admin-block">
-          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-caret-down"></i> Security &amp; retention</button>
-          <button class="admin-item" data-admin="security-policy" onclick="adminTab('security-policy')">Login &amp; IP policy</button>
-          <button class="admin-item" data-admin="holds" onclick="adminTab('holds')">Legal hold</button>
-          <button class="admin-item" data-admin="gdpr" onclick="adminTab('gdpr')">GDPR export / erase</button>
-          <button class="admin-item" data-admin="redaction-rules" onclick="adminTab('redaction-rules')">Redaction rules</button>
-          <button class="admin-item" data-admin="retention" onclick="adminTab('retention')">Retention</button>
-          <button class="admin-item" data-admin="audit" onclick="adminTab('audit')">Audit log</button>
-          <button class="admin-item" data-admin="compliance" onclick="adminTab('compliance')">Compliance posture</button>
+          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-shield-halved text-red-600 mr-1.5"></i> Security &amp; Retention</button>
+          <button class="admin-item" data-admin="security-policy" onclick="adminTab('security-policy')"><i class="fa-solid fa-user-lock text-red-500 mr-1.5"></i> Login &amp; IP policy</button>
+          <button class="admin-item" data-admin="holds" onclick="adminTab('holds')"><i class="fa-solid fa-lock text-red-500 mr-1.5"></i> Legal hold</button>
+          <button class="admin-item" data-admin="gdpr" onclick="adminTab('gdpr')"><i class="fa-solid fa-user-xmark text-red-500 mr-1.5"></i> GDPR export / erase</button>
+          <button class="admin-item" data-admin="redaction-rules" onclick="adminTab('redaction-rules')"><i class="fa-solid fa-highlighter text-red-500 mr-1.5"></i> Redaction rules</button>
+          <button class="admin-item" data-admin="retention" onclick="adminTab('retention')"><i class="fa-solid fa-hourglass-half text-red-500 mr-1.5"></i> Retention</button>
+          <button class="admin-item" data-admin="audit" onclick="adminTab('audit')"><i class="fa-solid fa-clipboard-list text-red-500 mr-1.5"></i> Audit log</button>
+          <button class="admin-item" data-admin="compliance" onclick="adminTab('compliance')"><i class="fa-solid fa-certificate text-red-500 mr-1.5"></i> Compliance posture</button>
         </div>
         <div class="admin-block">
-          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-caret-down"></i> Sharing &amp; insights</button>
-          <button class="admin-item" data-admin="tickets" onclick="adminTab('tickets')">Share links</button>
-          <button class="admin-item" data-admin="query-shares" onclick="adminTab('query-shares')">Query shares</button>
-          <button class="admin-item" data-admin="notify" onclick="adminTab('notify')">Notifications</button>
-          <button class="admin-item" data-admin="reports" onclick="adminTab('reports')">Reports</button>
-          <button class="admin-item" data-admin="report-builder" onclick="adminTab('report-builder')">Report builder</button>
-          <button class="admin-item" data-admin="rag" onclick="adminTab('rag')">Ask documents</button>
-          <button class="admin-item" data-admin="logs" onclick="adminTab('logs')">Server log</button>
+          <button type="button" class="admin-group" onclick="toggleAdminGroup(this)"><i class="fa-solid fa-chart-pie text-cyan-600 mr-1.5"></i> Sharing &amp; Insights</button>
+          <button class="admin-item" data-admin="tickets" onclick="adminTab('tickets')"><i class="fa-solid fa-link text-cyan-500 mr-1.5"></i> Share links</button>
+          <button class="admin-item" data-admin="query-shares" onclick="adminTab('query-shares')"><i class="fa-solid fa-share-nodes text-cyan-500 mr-1.5"></i> Query shares</button>
+          <button class="admin-item" data-admin="notify" onclick="adminTab('notify')"><i class="fa-solid fa-bell text-cyan-500 mr-1.5"></i> Notifications</button>
+          <button class="admin-item" data-admin="reports" onclick="adminTab('reports')"><i class="fa-solid fa-chart-simple text-cyan-500 mr-1.5"></i> Reports</button>
+          <button class="admin-item" data-admin="report-builder" onclick="adminTab('report-builder')"><i class="fa-solid fa-chart-column text-cyan-500 mr-1.5"></i> Report builder</button>
+          <button class="admin-item" data-admin="rag" onclick="adminTab('rag')"><i class="fa-solid fa-wand-magic-sparkles text-purple-500 mr-1.5"></i> Ask documents</button>
+          <button class="admin-item" data-admin="logs" onclick="adminTab('logs')"><i class="fa-solid fa-terminal text-slate-500 mr-1.5"></i> Server log</button>
         </div>
       </aside>
       <div class="splitter is-hidden" id="split-admin" data-target="admin"></div>
 
       <main id="work-area">
         <div id="dash-tabs" class="is-hidden">
-          <button class="dtab" data-dash="home" onclick="navTo('home')">Overview</button>
-          <button class="dtab" data-dash="messages" onclick="navTo('messages')">Messages</button>
-          <button class="dtab" data-dash="calendar" onclick="navTo('calendar')">Calendar</button>
-          <button class="dtab" data-dash="tasks" onclick="navTo('tasks')">Tasks <span id="notif-badge" class="badge is-hidden"></span></button>
-          <button class="dtab" data-dash="contacts" onclick="navTo('contacts')">People</button>
-          <button class="dtab" data-dash="settings" onclick="navTo('settings')">Settings</button>
+          <button class="dtab" data-dash="home" onclick="navTo('home')"><i class="fa-solid fa-chart-line mr-1 text-teal-600"></i>Overview</button>
+          <button class="dtab" data-dash="messages" onclick="navTo('messages')"><i class="fa-solid fa-comments mr-1 text-sky-600"></i>Messages</button>
+          <button class="dtab" data-dash="calendar" onclick="navTo('calendar')"><i class="fa-solid fa-calendar-days mr-1 text-blue-600"></i>Calendar</button>
+          <button class="dtab" data-dash="tasks" onclick="navTo('tasks')"><i class="fa-solid fa-list-check mr-1 text-emerald-600"></i>Tasks <span id="notif-badge-dash" class="badge is-hidden"></span></button>
+          <button class="dtab" data-dash="contacts" onclick="navTo('contacts')"><i class="fa-solid fa-address-book mr-1 text-indigo-600"></i>People</button>
+          <button class="dtab" data-dash="settings" onclick="navTo('settings')"><i class="fa-solid fa-gear mr-1 text-slate-600"></i>Settings</button>
         </div>
         <div id="query-bar" class="is-hidden">
           <span>Parsed:</span>
@@ -335,18 +335,18 @@
         <div id="work-home" class="work-pad is-hidden"></div>
         <div id="work-docs" class="is-hidden">
           <div class="toolbar">
-            <button class="tb primary" onclick="openUploadModal()" title="Upload"><i class="fa-solid fa-upload"></i> Upload</button>
-            <button class="tb" onclick="openFolderModal()" title="New folder"><i class="fa-solid fa-folder-plus"></i></button>
-            <button class="tb" onclick="exportFolder()" title="Export ZIP"><i class="fa-solid fa-file-zipper"></i></button>
-            <button class="tb" onclick="exportExcelReport()" title="Export to Excel (.xlsx)"><i class="fa-solid fa-file-excel"></i></button>
-            <button class="tb" onclick="exportWordReport()" title="Export to Word (.docx)"><i class="fa-solid fa-file-word"></i></button>
-            <button class="tb" onclick="runQuery('inbox')" title="Processing inbox"><i class="fa-solid fa-inbox"></i></button>
-            <button class="tb" onclick="bulkEditSelected()" title="Bulk edit"><i class="fa-solid fa-pen-to-square"></i></button>
-            <button class="tb" onclick="mergeSelected()" title="Merge"><i class="fa-solid fa-object-group"></i></button>
-            <button class="tb" onclick="toggleGridView()" title="List / tiles"><i class="fa-solid fa-table-cells"></i></button>
-            <button class="tb" onclick="pasteClipboard()" title="Paste"><i class="fa-solid fa-paste"></i></button>
-            <button class="tb" onclick="openMailCompose()" title="Send mail"><i class="fa-solid fa-envelope"></i></button>
-            <button class="tb" onclick="$('zip-file').click()" title="Import ZIP"><i class="fa-solid fa-file-zipper"></i></button>
+            <button class="tb primary" onclick="openUploadModal()" title="Upload files (U)"><i class="fa-solid fa-cloud-arrow-up"></i> Upload</button>
+            <button class="tb" onclick="openFolderModal()" title="New folder"><i class="fa-solid fa-folder-plus text-amber-500"></i></button>
+            <button class="tb" onclick="exportFolder()" title="Export ZIP"><i class="fa-solid fa-file-zipper text-blue-500"></i></button>
+            <button class="tb" onclick="exportExcelReport()" title="Export to Excel (.xlsx)"><i class="fa-solid fa-file-excel text-emerald-600"></i></button>
+            <button class="tb" onclick="exportWordReport()" title="Export to Word (.docx)"><i class="fa-solid fa-file-word text-blue-600"></i></button>
+            <button class="tb" onclick="runQuery('inbox')" title="Processing inbox"><i class="fa-solid fa-inbox text-purple-500"></i></button>
+            <button class="tb" onclick="bulkEditSelected()" title="Bulk edit"><i class="fa-solid fa-pen-to-square text-teal-500"></i></button>
+            <button class="tb" onclick="mergeSelected()" title="Merge documents"><i class="fa-solid fa-object-group text-indigo-500"></i></button>
+            <button class="tb" onclick="toggleGridView()" title="List / tiles"><i class="fa-solid fa-table-cells text-slate-500"></i></button>
+            <button class="tb" onclick="pasteClipboard()" title="Paste from clipboard"><i class="fa-solid fa-paste text-orange-500"></i></button>
+            <button class="tb" onclick="openMailCompose()" title="Send email"><i class="fa-solid fa-envelope text-sky-500"></i></button>
+            <button class="tb" onclick="$('zip-file').click()" title="Import ZIP"><i class="fa-solid fa-file-import text-violet-500"></i></button>
             <div class="grow"></div>
             <span class="meta" id="work-title">Documents</span>
             <span class="meta" id="work-sub"></span>
@@ -365,9 +365,9 @@
           <div class="grid-wrap">
             <div id="doc-list"></div>
             <div id="no-docs" class="empty is-hidden">
-              <i class="fa-solid fa-folder-open"></i>
+              <i class="fa-solid fa-folder-open text-3xl text-gray-300 mb-2"></i>
               <p>No documents in this folder.</p>
-              <button class="tb primary" onclick="openUploadModal()">Upload files</button>
+              <button class="tb primary mt-2" onclick="openUploadModal()"><i class="fa-solid fa-cloud-arrow-up mr-1"></i> Upload files</button>
             </div>
           </div>
         </div>
@@ -391,46 +391,46 @@
           <button class="tb" onclick="closeInspector()"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div class="insp-tabs">
-          <button class="insp-tab" data-tab="details" onclick="inspTab('details')" data-i18n="insp.properties">Properties</button>
-          <button class="insp-tab" data-tab="preview" onclick="inspTab('preview')" data-i18n="insp.preview">Preview</button>
-          <button class="insp-tab" data-tab="versions" onclick="inspTab('versions')" data-i18n="insp.versions">Versions</button>
-          <button class="insp-tab" data-tab="share" onclick="inspTab('share')" data-i18n="insp.share">Share</button>
-          <button class="insp-tab" data-tab="security" onclick="inspTab('security')" data-i18n="insp.security">Security</button>
-          <button class="insp-tab" data-tab="workflow" onclick="inspTab('workflow')" data-i18n="insp.workflow">Workflow</button>
-          <button class="insp-tab" data-tab="pdfops" onclick="inspTab('pdfops')" data-i18n="insp.pdf">PDF / Sign</button>
+          <button class="insp-tab" data-tab="details" onclick="inspTab('details')" data-i18n="insp.properties"><i class="fa-solid fa-sliders text-teal-600 mr-1"></i>Properties</button>
+          <button class="insp-tab" data-tab="preview" onclick="inspTab('preview')" data-i18n="insp.preview"><i class="fa-solid fa-eye text-sky-600 mr-1"></i>Preview</button>
+          <button class="insp-tab" data-tab="versions" onclick="inspTab('versions')" data-i18n="insp.versions"><i class="fa-solid fa-code-branch text-purple-600 mr-1"></i>Versions</button>
+          <button class="insp-tab" data-tab="share" onclick="inspTab('share')" data-i18n="insp.share"><i class="fa-solid fa-share-nodes text-blue-600 mr-1"></i>Share</button>
+          <button class="insp-tab" data-tab="security" onclick="inspTab('security')" data-i18n="insp.security"><i class="fa-solid fa-shield-halved text-rose-600 mr-1"></i>Security</button>
+          <button class="insp-tab" data-tab="workflow" onclick="inspTab('workflow')" data-i18n="insp.workflow"><i class="fa-solid fa-diagram-project text-emerald-600 mr-1"></i>Workflow</button>
+          <button class="insp-tab" data-tab="pdfops" onclick="inspTab('pdfops')" data-i18n="insp.pdf"><i class="fa-solid fa-signature text-amber-600 mr-1"></i>PDF / Sign</button>
           <div class="drop" id="insp-more-drop">
             <button type="button" class="insp-tab" id="insp-more-btn" onclick="toggleDrop('insp-more-drop')">More</button>
             <div class="drop-menu drop-menu-right">
-              <button class="insp-tab" data-tab="files" onclick="inspTab('files'); closeDrops()">Files</button>
-              <button class="insp-tab" data-tab="officeprops" onclick="inspTab('officeprops'); closeDrops()">Office Props</button>
-              <button class="insp-tab" data-tab="comments" onclick="inspTab('comments'); closeDrops()">Notes</button>
-              <button class="insp-tab" data-tab="links" onclick="inspTab('links'); closeDrops()">Links</button>
-              <button class="insp-tab" data-tab="history" onclick="inspTab('history'); closeDrops()">History</button>
-              <button class="insp-tab" data-tab="aliases" onclick="inspTab('aliases'); closeDrops()">Aliases</button>
-              <button class="insp-tab" data-tab="subscriptions" onclick="inspTab('subscriptions'); closeDrops()">Subscriptions</button>
-              <button class="insp-tab" data-tab="folder" onclick="inspTab('folder'); closeDrops()">Folder</button>
+              <button class="insp-tab" data-tab="files" onclick="inspTab('files'); closeDrops()"><i class="fa-solid fa-paperclip text-slate-500 mr-1.5"></i>Files</button>
+              <button class="insp-tab" data-tab="officeprops" onclick="inspTab('officeprops'); closeDrops()"><i class="fa-solid fa-file-word text-blue-500 mr-1.5"></i>Office Props</button>
+              <button class="insp-tab" data-tab="comments" onclick="inspTab('comments'); closeDrops()"><i class="fa-solid fa-comment-dots text-teal-500 mr-1.5"></i>Notes</button>
+              <button class="insp-tab" data-tab="links" onclick="inspTab('links'); closeDrops()"><i class="fa-solid fa-link text-indigo-500 mr-1.5"></i>Links</button>
+              <button class="insp-tab" data-tab="history" onclick="inspTab('history'); closeDrops()"><i class="fa-solid fa-clock-rotate-left text-amber-500 mr-1.5"></i>History</button>
+              <button class="insp-tab" data-tab="aliases" onclick="inspTab('aliases'); closeDrops()"><i class="fa-solid fa-arrow-turn-right text-purple-500 mr-1.5"></i>Aliases</button>
+              <button class="insp-tab" data-tab="subscriptions" onclick="inspTab('subscriptions'); closeDrops()"><i class="fa-solid fa-bell text-rose-500 mr-1.5"></i>Subscriptions</button>
+              <button class="insp-tab" data-tab="folder" onclick="inspTab('folder'); closeDrops()"><i class="fa-solid fa-folder-open text-sky-500 mr-1.5"></i>Folder</button>
             </div>
           </div>
         </div>
         <div id="insp-body"></div>
         <div class="insp-foot">
-          <button class="tb primary" onclick="downloadDoc(currentDocId)" title="Download"><i class="fa-solid fa-download"></i> Download</button>
-          <button class="tb" onclick="openOfficeModal()" title="Microsoft Office Suite"><i class="fa-solid fa-file-word"></i> Office</button>
-          <button class="tb" onclick="toggleCheckout()" id="insp-lock" title="Check out / in"><i class="fa-solid fa-lock"></i></button>
+          <button class="tb primary" onclick="downloadDoc(currentDocId)" title="Download"><i class="fa-solid fa-cloud-arrow-down"></i> Download</button>
+          <button class="tb" onclick="openOfficeModal()" title="Microsoft Office Suite"><i class="fa-solid fa-file-word text-blue-600"></i> Office</button>
+          <button class="tb" onclick="toggleCheckout()" id="insp-lock" title="Check out / in"><i class="fa-solid fa-lock text-amber-600"></i></button>
           <div class="drop" id="insp-act-drop">
             <button type="button" class="tb" onclick="toggleDrop('insp-act-drop')">More</button>
             <div class="drop-menu drop-menu-up">
-              <button onclick="openOfficeOnline(); closeDrops()">Edit in Office Online</button>
-              <button onclick="openOfficeTemplateModal(); closeDrops()">Template Merge</button>
-              <button onclick="confirmCurrent(); closeDrops()">Confirm</button>
-              <button onclick="confirmReadCurrent(); closeDrops()">Mark as read</button>
-              <button onclick="unconfirmCurrent(); closeDrops()">Unconfirm</button>
-              <button onclick="nextUnconfirmed(); closeDrops()">Next unconfirmed</button>
-              <button onclick="downloadOriginal(); closeDrops()">Download original</button>
-              <button onclick="reprocessDoc(); closeDrops()">Re-run OCR</button>
+              <button onclick="openOfficeOnline(); closeDrops()"><i class="fa-solid fa-file-lines text-blue-500 mr-2"></i>Edit in Office Online</button>
+              <button onclick="openOfficeTemplateModal(); closeDrops()"><i class="fa-solid fa-file-signature text-amber-500 mr-2"></i>Template Merge</button>
+              <button onclick="confirmCurrent(); closeDrops()"><i class="fa-solid fa-check text-green-500 mr-2"></i>Confirm</button>
+              <button onclick="confirmReadCurrent(); closeDrops()"><i class="fa-solid fa-book-open-reader text-teal-500 mr-2"></i>Mark as read</button>
+              <button onclick="unconfirmCurrent(); closeDrops()"><i class="fa-solid fa-xmark text-slate-500 mr-2"></i>Unconfirm</button>
+              <button onclick="nextUnconfirmed(); closeDrops()"><i class="fa-solid fa-forward text-indigo-500 mr-2"></i>Next unconfirmed</button>
+              <button onclick="downloadOriginal(); closeDrops()"><i class="fa-solid fa-download text-blue-500 mr-2"></i>Download original</button>
+              <button onclick="reprocessDoc(); closeDrops()"><i class="fa-solid fa-rotate text-purple-500 mr-2"></i>Re-run OCR</button>
             </div>
           </div>
-          <button class="tb danger" onclick="deleteDoc(currentDocId)" title="Delete"><i class="fa-solid fa-trash"></i></button>
+          <button class="tb danger" onclick="deleteDoc(currentDocId)" title="Delete"><i class="fa-solid fa-trash-can"></i></button>
         </div>
       </aside>
     </div>
@@ -571,10 +571,10 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=newton-v9"></script>
-  <script src="/static/ce.js?v=newton-v9"></script>
-  <script src="/static/intel.js?v=newton-v9"></script>
-  <script src="/static/enterprise.js?v=newton-v9"></script>
-  <script src="/static/complete.js?v=newton-v9"></script>
+  <script src="/static/app.js?v=newton-v10"></script>
+  <script src="/static/ce.js?v=newton-v10"></script>
+  <script src="/static/intel.js?v=newton-v10"></script>
+  <script src="/static/enterprise.js?v=newton-v10"></script>
+  <script src="/static/complete.js?v=newton-v10"></script>
 </body>
 </html>
