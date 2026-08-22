@@ -363,6 +363,16 @@ class WorkflowInstanceOut(BaseModel):
     completed_at: datetime | None
 
 
+class TaskCreate(BaseModel):
+    title: str
+    document_id: int | None = None
+    assignee_id: int | None = None
+    assignee_role: str | None = None
+    due_at: datetime | None = None
+    sla_hours: int | None = 24
+    description: str | None = ""
+
+
 class TaskAction(BaseModel):
     approved: bool = True
     action: str | None = "approve"  # 'approve', 'reject', 'reassign', 'delegate'

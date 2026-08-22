@@ -174,6 +174,38 @@ def test_multiple_calendar_events_on_single_date(client):
     ]
 
 
+def test_create_custom_task_and_notifications(client, admin_token, root_folder_id):
+    admin = _auth(admin_token)
+    doc = _upload(client, admin, root_folder_id, "TaskContract")
+
+    # Create task
+    t_res = client.post(
+        "/api/tasks",
+        json={
+            "title": "Review NDA clause 4",
+            "document_id": doc["id"],
+            "sla_hours": 48,
+            "description": "Verify indemnity terms",
+        },
+        headers=admin,
+    )
+    assert t_res.status_code == 200
+    task_data = t_res.json()
+    assert task_data["step_name"] == "Review NDA clause 4"
+    assert task_data["document_id"] == doc["id"]
+    assert task_data["status"] == "pending"
+
+    # Verify notification created
+    notifs = client.get("/api/notifications?unread_only=true", headers=admin).json()
+    assert any("Review NDA clause 4" in n["message"] for n in notifs)
+
+    # Mark all read
+    read_all = client.post("/api/notifications/read-all", headers=admin)
+    assert read_all.status_code == 200
+    unread = client.get("/api/notifications?unread_only=true", headers=admin).json()
+    assert len(unread) == 0
+
+
 # ---------------------------------------------------------------------------
 # Workflow guards
 # ---------------------------------------------------------------------------

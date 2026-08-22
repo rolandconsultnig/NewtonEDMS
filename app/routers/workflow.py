@@ -22,6 +22,7 @@ from app.permissions import has_permission
 from app.schemas import (
     NotificationOut,
     TaskAction,
+    TaskCreate,
     TaskOut,
     WorkflowInstanceOut,
     WorkflowStep,
@@ -262,6 +263,103 @@ def list_tasks(
     return result
 
 
+@router.post("/tasks", response_model=TaskOut)
+def create_task(
+    payload: TaskCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not payload.title or not payload.title.strip():
+        raise HTTPException(status_code=400, detail="Task title is required")
+
+    doc_id = payload.document_id
+    if doc_id is not None:
+        d = db.get(Document, doc_id)
+        if not d:
+            raise HTTPException(status_code=404, detail="Document not found")
+        f = db.get(Folder, d.folder_id)
+        if not has_permission(db, user, "read", f, d):
+            raise HTTPException(status_code=403, detail="No permission on document")
+    else:
+        first_doc = db.query(Document).first()
+        if first_doc:
+            doc_id = first_doc.id
+        else:
+            root_f = db.query(Folder).filter(Folder.parent_id == None).first()
+            if not root_f:
+                root_f = Folder(name="General", created_by=user.id)
+                db.add(root_f)
+                db.flush()
+            placeholder = Document(
+                folder_id=root_f.id,
+                title="General Workspace",
+                file_path="",
+                size=0,
+                created_by=user.id,
+                status="ready",
+            )
+            db.add(placeholder)
+            db.flush()
+            doc_id = placeholder.id
+
+    tmpl = db.query(WorkflowTemplate).filter(WorkflowTemplate.name == "Ad-hoc Tasks").first()
+    if not tmpl:
+        tmpl = WorkflowTemplate(
+            name="Ad-hoc Tasks",
+            description="Template for ad-hoc and user-created tasks",
+            steps=[{"name": "Review & Complete", "assignee_role": "user"}],
+            created_by=user.id,
+        )
+        db.add(tmpl)
+        db.flush()
+
+    inst = WorkflowInstance(
+        template_id=tmpl.id,
+        document_id=doc_id,
+        status="running",
+        current_step=0,
+        context={"task_title": payload.title.strip()},
+        created_by=user.id,
+    )
+    db.add(inst)
+    db.flush()
+
+    assignee_id = payload.assignee_id or user.id
+    assignee_user = db.get(User, assignee_id) if assignee_id else user
+    assignee_name = assignee_user.username if assignee_user else user.username
+
+    due = payload.due_at
+    if not due and payload.sla_hours:
+        due = now() + timedelta(hours=payload.sla_hours)
+
+    task = Task(
+        instance_id=inst.id,
+        step_index=0,
+        step_name=payload.title.strip(),
+        assignee_id=assignee_id,
+        assignee_role=payload.assignee_role,
+        comment=payload.description or "",
+        sla_hours=payload.sla_hours,
+        due_at=due,
+        status="pending",
+    )
+    db.add(task)
+    db.flush()
+
+    target_uid = assignee_id if assignee_id else user.id
+    notif = Notification(
+        user_id=target_uid,
+        message=f"New Task: {payload.title.strip()} (Doc #{doc_id})",
+        read=False,
+    )
+    db.add(notif)
+    db.commit()
+    db.refresh(task)
+
+    audit(db, user, "TASK_CREATE", "task", task.id, payload.title.strip())
+    return _format_task_out(task, doc_id, assignee_name)
+
+
 @router.post("/tasks/{task_id}/action", response_model=TaskOut)
 def task_action(
     task_id: int,
@@ -368,5 +466,17 @@ def mark_read(
     if not n or n.user_id != user.id:
         raise HTTPException(status_code=404, detail="Notification not found")
     n.read = True
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/notifications/read-all")
+def mark_all_read(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    db.query(Notification).filter(Notification.user_id == user.id, Notification.read.is_(False)).update(
+        {"read": True}, synchronize_session=False
+    )
     db.commit()
     return {"ok": True}

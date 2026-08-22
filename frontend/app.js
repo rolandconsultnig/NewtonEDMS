@@ -1821,28 +1821,254 @@ async function delEvent(id) {
   if (_calSelectedDate) selectCalDate(_calSelectedDate);
 }
 
+let _taskFilter = "all";
+
 async function renderTasks() {
-  const [tasks, notifs] = await Promise.all([apiFetch("/tasks"), apiFetch("/notifications")]);
+  const [tasks, notifs] = await Promise.all([
+    apiFetch("/tasks") || [],
+    apiFetch("/notifications") || []
+  ]);
+
+  const allTasks = tasks || [];
+  const allNotifs = notifs || [];
+  const pendingCount = allTasks.filter(t => t.status === "pending").length;
+  const unreadNotifs = allNotifs.filter(n => !n.read).length;
+
+  let filteredTasks = allTasks;
+  if (_taskFilter === "pending") filteredTasks = allTasks.filter(t => t.status === "pending");
+  else if (_taskFilter === "completed") filteredTasks = allTasks.filter(t => t.status !== "pending");
+
   $("work-tasks").innerHTML = `
-    <h2 class="text-lg font-bold mb-3">Tasks & notifications</h2>
-    <div class="bg-white rounded shadow p-4 mb-4">
-      <h3 class="font-bold mb-2">Workflow tasks</h3>
-      ${(tasks || []).length ? `<table class="w-full text-sm"><thead><tr class="text-left text-gray-500"><th class="p-1">Step</th><th>Doc</th><th>Status</th><th></th></tr></thead>
-        <tbody>${tasks.map((t) => `<tr class="border-b"><td class="p-1">${esc(t.step_name)}</td><td><button class="text-blue-600" onclick="openDoc(${t.document_id})">#${t.document_id}</button></td>
-          <td>${esc(t.status)}</td><td>${t.status === "pending" ? `
-            <button onclick="taskAction(${t.id}, true)" class="text-green-600 mr-2">Approve</button>
-            <button onclick="taskAction(${t.id}, false)" class="text-red-600">Reject</button>` : ""}</td></tr>`).join("")}</tbody></table>`
-        : '<p class="text-gray-400">No tasks</p>'}
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <div>
+        <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+          <i class="fa-solid fa-list-check text-teal-600"></i> Tasks &amp; Workflow Center
+        </h2>
+        <p class="text-xs text-gray-500 mt-0.5">
+          ${pendingCount} pending task(s) requiring action · ${unreadNotifs} unread notification(s)
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="openCreateTaskModal()" class="cal-nav-btn primary py-2 px-3 shadow-sm">
+          <i class="fa-solid fa-plus"></i> Add New Task
+        </button>
+      </div>
     </div>
-    <div class="bg-white rounded shadow p-4">
-      <h3 class="font-bold mb-2">Notifications</h3>
-      ${(notifs || []).length ? notifs.map((n) => `<div class="border-b py-2 flex justify-between ${n.read ? "text-gray-400" : ""}">
-        <span>${esc(n.message)} <span class="text-xs">${fmtDate(n.created_at)}</span></span>
-        ${!n.read ? `<button onclick="markRead(${n.id})" class="text-blue-600 text-xs">Read</button>` : ""}
-      </div>`).join("") : '<p class="text-gray-400">No notifications</p>'}
+
+    <!-- Task Filter Tabs -->
+    <div class="flex items-center gap-2 mb-3 border-b pb-2">
+      <button class="cal-nav-btn ${_taskFilter === 'all' ? 'primary' : ''}" onclick="_taskFilter='all'; renderTasks();">
+        All Tasks (${allTasks.length})
+      </button>
+      <button class="cal-nav-btn ${_taskFilter === 'pending' ? 'primary' : ''}" onclick="_taskFilter='pending'; renderTasks();">
+        Pending Action (${pendingCount})
+      </button>
+      <button class="cal-nav-btn ${_taskFilter === 'completed' ? 'primary' : ''}" onclick="_taskFilter='completed'; renderTasks();">
+        Completed / Resolved (${allTasks.length - pendingCount})
+      </button>
+    </div>
+
+    <!-- Main Workspace Grid: Tasks on left/top, Notifications on right -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <div class="bg-white rounded-lg shadow border p-4 lg:col-span-2">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-bold text-sm text-gray-700">
+            <i class="fa-solid fa-tasks text-blue-600 mr-1.5"></i> Task Assignments
+          </h3>
+          <span class="text-xs text-gray-400">Showing ${filteredTasks.length} task(s)</span>
+        </div>
+
+        ${filteredTasks.length ? `
+          <div class="divide-y max-h-[600px] overflow-y-auto">
+            ${filteredTasks.map((t) => {
+              const isPending = t.status === "pending";
+              const statusBg = t.status === "approved" ? "bg-green-100 text-green-800" :
+                               t.status === "rejected" ? "bg-red-100 text-red-800" :
+                               t.status === "pending" ? "bg-amber-100 text-amber-800" : "bg-gray-100 text-gray-800";
+              const isOverdue = t.due_at && new Date(t.due_at) < new Date() && isPending;
+
+              return `
+                <div class="py-3 px-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-gray-50/80 rounded transition">
+                  <div class="flex-1">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="font-semibold text-sm text-gray-900">${esc(t.step_name)}</span>
+                      <span class="text-xs px-2 py-0.5 rounded-full font-semibold uppercase ${statusBg}">
+                        ${esc(t.status)}
+                      </span>
+                      ${t.document_id ? `
+                        <span class="bg-blue-50 text-blue-700 border border-blue-200 text-xs px-2 py-0.5 rounded cursor-pointer hover:bg-blue-100" onclick="openDocDetails(${t.document_id})">
+                          <i class="fa-solid fa-file-lines mr-1"></i>Doc #${t.document_id}
+                        </span>` : ""}
+                    </div>
+                    
+                    <div class="text-xs text-gray-500 mt-1 flex items-center gap-3 flex-wrap">
+                      ${t.assignee_username ? `<span><i class="fa-regular fa-user mr-1"></i>${esc(t.assignee_username)}</span>` : (t.assignee_role ? `<span><i class="fa-solid fa-shield mr-1"></i>Role: ${esc(t.assignee_role)}</span>` : "")}
+                      ${t.due_at ? `<span class="${isOverdue ? 'text-red-600 font-bold' : ''}"><i class="fa-regular fa-clock mr-1"></i>Due: ${fmtDate(t.due_at)} ${isOverdue ? '(Overdue)' : ''}</span>` : ""}
+                      ${t.comment ? `<span class="text-gray-600 italic">“${esc(t.comment)}”</span>` : ""}
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-1.5 self-end sm:self-center">
+                    ${isPending ? `
+                      <button onclick="taskAction(${t.id}, true)" class="cal-nav-btn text-xs" style="background:#16a34a; color:#fff; border-color:#16a34a;" title="Approve task">
+                        <i class="fa-solid fa-check"></i> Approve
+                      </button>
+                      <button onclick="taskAction(${t.id}, false)" class="cal-nav-btn text-xs" style="background:#dc2626; color:#fff; border-color:#dc2626;" title="Reject task">
+                        <i class="fa-solid fa-xmark"></i> Reject
+                      </button>` : `
+                      <span class="text-xs text-gray-400 italic">Resolved</span>`}
+                  </div>
+                </div>`;
+            }).join("")}
+          </div>
+        ` : `
+          <div class="p-8 text-center text-gray-400">
+            <i class="fa-solid fa-clipboard-check text-3xl mb-2 text-gray-300 block"></i>
+            <p class="text-sm">No tasks matching current filter.</p>
+            <button onclick="openCreateTaskModal()" class="cal-nav-btn primary text-xs mt-3">
+              <i class="fa-solid fa-plus"></i> Create New Task
+            </button>
+          </div>`}
+      </div>
+
+      <!-- Notifications Column -->
+      <div class="bg-white rounded-lg shadow border p-4 lg:col-span-1">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-bold text-sm text-gray-700">
+            <i class="fa-solid fa-bell text-teal-600 mr-1.5"></i> Activity Feed
+          </h3>
+          ${unreadNotifs ? `<button onclick="markAllNotifsRead()" class="text-xs text-blue-600 font-semibold hover:underline">Mark all read</button>` : ""}
+        </div>
+
+        ${allNotifs.length ? `
+          <div class="divide-y max-h-[600px] overflow-y-auto">
+            ${allNotifs.map((n) => `
+              <div class="py-2.5 px-1 flex items-start justify-between gap-2 ${n.read ? 'text-gray-500' : 'bg-teal-50/50 font-semibold text-gray-900 rounded'}">
+                <div class="flex-1">
+                  <p class="text-xs leading-snug">${esc(n.message)}</p>
+                  <span class="text-[10px] text-gray-400 block mt-0.5">${fmtDate(n.created_at)}</span>
+                </div>
+                ${!n.read ? `
+                  <button onclick="markRead(${n.id})" class="text-blue-600 hover:text-blue-800 text-xs px-1.5 py-0.5 rounded border border-blue-200" title="Mark as read">
+                    <i class="fa-solid fa-check"></i>
+                  </button>` : ""}
+              </div>`).join("")}
+          </div>
+        ` : '<p class="text-gray-400 text-xs text-center py-8">No notifications yet.</p>'}
+      </div>
     </div>`;
+
   updateNotifBadge();
 }
+
+window.openCreateTaskModal = function(docId) {
+  const modalHtml = `
+    <div id="create-task-modal" class="modal is-active" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target === this) closeModal('create-task-modal')">
+      <div class="modal-card" style="background:#fff;border-radius:8px;max-width:520px;width:100%;box-shadow:0 10px 25px rgba(0,0,0,0.2);overflow:hidden;animation:fadeIn 0.15s ease;" onclick="event.stopPropagation()">
+        <header class="modal-card-head" style="padding:14px 18px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+          <h3 style="font-weight:700;font-size:16px;color:#1e293b;margin:0;">
+            <i class="fa-solid fa-list-check text-teal-600 mr-2"></i>Create New Task
+          </h3>
+          <button class="delete" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;line-height:1;" onclick="closeModal('create-task-modal')">×</button>
+        </header>
+        <section class="modal-card-body" style="padding:18px;max-height:75vh;overflow-y:auto;">
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div>
+              <label style="font-size:12px;font-weight:600;color:#334155;display:block;margin-bottom:4px;">Task Title / Action Item *</label>
+              <input id="task-create-title" placeholder="e.g. Review & Approve Contract, PO Verification" class="border p-2 rounded w-full text-sm" />
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <div>
+                <label style="font-size:12px;font-weight:600;color:#334155;display:block;margin-bottom:4px;">Target Document ID</label>
+                <input id="task-create-doc" type="number" value="${docId || ''}" placeholder="Doc ID (optional)" class="border p-2 rounded w-full text-sm" />
+              </div>
+              <div>
+                <label style="font-size:12px;font-weight:600;color:#334155;display:block;margin-bottom:4px;">Assignee Role</label>
+                <select id="task-create-role" class="border p-2 rounded w-full text-sm" style="background:#fff;">
+                  <option value="">Specific User / Myself</option>
+                  <option value="manager">Manager</option>
+                  <option value="admin">Administrator</option>
+                  <option value="legal">Legal Counsel</option>
+                  <option value="finance">Finance / Accounting</option>
+                  <option value="compliance">Compliance Officer</option>
+                  <option value="user">General User</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <div>
+                <label style="font-size:12px;font-weight:600;color:#334155;display:block;margin-bottom:4px;">SLA Deadline (Hours)</label>
+                <select id="task-create-sla" class="border p-2 rounded w-full text-sm" style="background:#fff;">
+                  <option value="4">4 Hours (Urgent)</option>
+                  <option value="24" selected>24 Hours (Standard)</option>
+                  <option value="48">48 Hours</option>
+                  <option value="72">3 Days</option>
+                  <option value="168">1 Week</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:12px;font-weight:600;color:#334155;display:block;margin-bottom:4px;">Custom Due Date</label>
+                <input id="task-create-due" type="datetime-local" class="border p-2 rounded w-full text-xs" />
+              </div>
+            </div>
+
+            <div>
+              <label style="font-size:12px;font-weight:600;color:#334155;display:block;margin-bottom:4px;">Instructions / Description</label>
+              <textarea id="task-create-desc" placeholder="Provide instructions or background for this assignment..." rows="3" class="border p-2 rounded w-full text-sm"></textarea>
+            </div>
+
+            <button onclick="submitCreateTask()" class="cal-nav-btn primary" style="width:100%;justify-content:center;padding:10px;font-size:14px;margin-top:6px;">
+              <i class="fa-solid fa-plus-circle mr-1"></i> Create Task
+            </button>
+          </div>
+        </section>
+      </div>
+    </div>`;
+
+  const existing = $("create-task-modal");
+  if (existing) existing.remove();
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = modalHtml;
+  document.body.appendChild(wrapper.firstElementChild);
+  setTimeout(() => {
+    const t = $("task-create-title");
+    if (t) t.focus();
+  }, 100);
+};
+
+window.submitCreateTask = async function() {
+  const title = val("task-create-title");
+  if (!title || !title.trim()) {
+    toast("Please enter a task title", "warning");
+    return;
+  }
+  const docId = val("task-create-doc") ? parseInt(val("task-create-doc"), 10) : null;
+  const role = val("task-create-role") || null;
+  const sla = parseInt(val("task-create-sla") || "24", 10);
+  const due = val("task-create-due") || null;
+  const desc = val("task-create-desc") || "";
+
+  await apiFetch("/tasks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: title.trim(),
+      document_id: docId,
+      assignee_role: role,
+      sla_hours: sla,
+      due_at: due,
+      description: desc,
+    }),
+  });
+
+  toast("Task created successfully", "success");
+  closeModal("create-task-modal");
+  await renderTasks();
+  updateNotifBadge();
+};
+
 async function taskAction(id, approved) {
   const comment = approved ? "" : (prompt("Rejection comment") || "");
   await apiFetch(`/tasks/${id}/action`, {
@@ -1850,19 +2076,85 @@ async function taskAction(id, approved) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ approved, comment }),
   });
+  toast(approved ? "Task approved" : "Task rejected", "info");
   renderTasks();
+  updateNotifBadge();
 }
+
 async function markRead(id) {
   await apiFetch(`/notifications/${id}/read`, { method: "POST" });
   renderTasks();
+  updateNotifBadge();
 }
+
+window.toggleNotifDrop = async function() {
+  const drop = $("notif-drop");
+  if (!drop) return;
+  const willOpen = !drop.classList.contains("open");
+  closeDrops();
+  if (willOpen) {
+    drop.classList.add("open");
+    await loadTopNotifs();
+  }
+};
+
+window.loadTopNotifs = async function() {
+  const listEl = $("notif-top-list");
+  if (!listEl) return;
+  try {
+    const notifs = (await apiFetch("/notifications")) || [];
+    if (!notifs.length) {
+      listEl.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted);"><i class="fa-regular fa-bell-slash text-xl mb-1 block"></i>No notifications yet</div>';
+      return;
+    }
+    listEl.innerHTML = notifs.slice(0, 15).map(n => `
+      <div class="notif-item ${n.read ? '' : 'is-unread'}">
+        <div style="flex:1;">
+          <div style="font-size:12px;color:var(--text);line-height:1.35;">${esc(n.message)}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtDate(n.created_at)}</div>
+        </div>
+        ${!n.read ? `
+          <button onclick="markTopNotifRead(${n.id}, event)" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px;" title="Mark read">
+            <i class="fa-solid fa-check"></i>
+          </button>` : ''}
+      </div>`).join("");
+  } catch (e) {
+    listEl.innerHTML = '<div style="padding:16px;text-align:center;color:#ef4444;">Failed to load notifications</div>';
+  }
+};
+
+window.markTopNotifRead = async function(id, ev) {
+  if (ev) ev.stopPropagation();
+  await apiFetch(`/notifications/${id}/read`, { method: "POST" });
+  await loadTopNotifs();
+  updateNotifBadge();
+};
+
+window.markAllNotifsRead = async function() {
+  await apiFetch("/notifications/read-all", { method: "POST" });
+  toast("All notifications marked as read", "success");
+  await loadTopNotifs();
+  updateNotifBadge();
+  if (currentNav === "tasks") renderTasks();
+};
+
 async function updateNotifBadge() {
   try {
     const unread = (await apiFetch("/notifications?unread_only=true")) || [];
     const badge = $("notif-badge");
-    if (unread.length) { badge.textContent = unread.length; badge.classList.remove("is-hidden"); }
-    else badge.classList.add("is-hidden");
+    if (!badge) return;
+    if (unread.length) {
+      badge.textContent = unread.length > 99 ? "99+" : unread.length;
+      badge.classList.remove("is-hidden");
+    } else {
+      badge.classList.add("is-hidden");
+    }
   } catch (e) { /* ignore */ }
+}
+
+// Background polling for notifications every 25 seconds
+if (!window._notifPollTimer) {
+  window._notifPollTimer = setInterval(updateNotifBadge, 25000);
 }
 
 // ---- People (address book + user & group management) ----------------------
