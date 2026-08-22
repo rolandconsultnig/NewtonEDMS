@@ -1543,7 +1543,7 @@ async function renderCalendar() {
           <span><i class="fa-solid fa-list-check text-blue-600 mr-1"></i> Agenda &amp; Scheduled Events</span>
           <span class="text-xs text-gray-500">${_calEvents.length} total registered</span>
         </h3>
-        <div class="divide-y max-h-96 overflow-y-auto">
+        <div id="cal-agenda-list" class="divide-y max-h-96 overflow-y-auto">
           ${_calEvents.length ? _calEvents.map((e) => {
             const dt = e.start_at ? new Date(e.start_at) : null;
             const dtKey = dt && !isNaN(dt.getTime()) ? _fmtDateKey(dt.getFullYear(), dt.getMonth(), dt.getDate()) : "";
@@ -1599,22 +1599,68 @@ window.calToday = function() {
 window.selectCalDate = function(dateStr) {
   _calSelectedDate = dateStr;
   
-  // Highlight cell
+  // Highlight clicked date cell
   document.querySelectorAll(".cal-day").forEach(el => el.classList.remove("is-selected"));
   const cell = $(`cal-day-${dateStr}`);
-  if (cell) cell.classList.add("is-selected");
+  if (cell) {
+    cell.classList.add("is-selected");
+    cell.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
 
   // Update inline form fields
   const startEl = $("cal-start");
   const endEl = $("cal-end");
   const labelEl = $("cal-selected-label");
+  const titleEl = $("cal-title");
+  
   if (startEl) startEl.value = `${dateStr}T09:00`;
   if (endEl) endEl.value = `${dateStr}T10:00`;
-  if (labelEl) labelEl.textContent = `For: ${dateStr}`;
+  if (labelEl) labelEl.innerHTML = `<span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-semibold">Selected: ${dateStr}</span>`;
+  if (titleEl) titleEl.focus();
 
-  // Open day events modal inspector to allow managing/adding multiple events on this date
-  openDayEventsModal(dateStr);
+  // Filter Agenda view to highlight or show day events
+  updateAgendaView(dateStr);
 };
+
+function updateAgendaView(filterDateStr) {
+  const container = $("cal-agenda-list");
+  if (!container) return;
+
+  const targetEvents = filterDateStr 
+    ? _calEvents.filter(ev => {
+        if (!ev.start_at) return false;
+        const dt = new Date(ev.start_at);
+        if (isNaN(dt.getTime())) return false;
+        return _fmtDateKey(dt.getFullYear(), dt.getMonth(), dt.getDate()) === filterDateStr;
+      })
+    : _calEvents;
+
+  container.innerHTML = targetEvents.length ? targetEvents.map((e) => {
+    const dt = e.start_at ? new Date(e.start_at) : null;
+    const dtKey = dt && !isNaN(dt.getTime()) ? _fmtDateKey(dt.getFullYear(), dt.getMonth(), dt.getDate()) : "";
+    const isMatch = filterDateStr && dtKey === filterDateStr;
+    return `
+      <div class="py-2.5 px-2 flex items-center justify-between hover:bg-gray-50 rounded ${isMatch ? 'bg-blue-50/80 border-l-4 border-blue-500 shadow-sm' : ''}">
+        <div class="flex-1 pr-2">
+          <div class="font-semibold text-sm text-gray-800 flex items-center gap-2">
+            ${esc(e.title)}
+            ${e.document_id ? `<span class="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded cursor-pointer" onclick="openDocDetails(${e.document_id})"><i class="fa-solid fa-file-lines mr-1"></i>Doc #${e.document_id}</span>` : ""}
+          </div>
+          <div class="text-xs text-gray-500 mt-0.5">
+            <i class="fa-regular fa-clock mr-1"></i>${fmtDate(e.start_at)} ${e.end_at ? "— " + new Date(e.end_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : ""}
+            ${e.description ? `<span class="ml-2 text-gray-600">· ${esc(e.description)}</span>` : ""}
+          </div>
+        </div>
+        <button class="text-red-500 hover:text-red-700 p-1.5" onclick="delEvent(${e.id})" title="Delete event">
+          <i class="fa-solid fa-trash-can"></i>
+        </button>
+      </div>`;
+  }).join("") : `<div class="p-6 text-center text-gray-400 text-sm">
+      <i class="fa-regular fa-calendar-xmark text-2xl mb-1 block"></i>
+      No events found for ${filterDateStr || "selected period"}.
+      <div class="mt-2"><button class="cal-nav-btn primary text-xs" onclick="if($('cal-title')) $('cal-title').focus();"><i class="fa-solid fa-plus"></i> Add Event to this Date</button></div>
+    </div>`;
+}
 
 window.openDayEventsModal = function(dateStr) {
   const dayEvs = _calEvents.filter((ev) => {
@@ -1625,13 +1671,13 @@ window.openDayEventsModal = function(dateStr) {
   });
 
   const modalHtml = `
-    <div id="cal-day-modal" class="modal is-active" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;">
-      <div class="modal-card" style="background:#fff;border-radius:8px;max-width:550px;width:100%;box-shadow:0 10px 25px rgba(0,0,0,0.2);overflow:hidden;animation:fadeIn 0.15s ease;">
+    <div id="cal-day-modal" class="modal is-active" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target === this) closeModal('cal-day-modal')">
+      <div class="modal-card" style="background:#fff;border-radius:8px;max-width:550px;width:100%;box-shadow:0 10px 25px rgba(0,0,0,0.2);overflow:hidden;animation:fadeIn 0.15s ease;" onclick="event.stopPropagation()">
         <header class="modal-card-head" style="padding:14px 18px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
           <h3 style="font-weight:700;font-size:16px;color:#1e293b;margin:0;">
             <i class="fa-solid fa-calendar-day text-blue-600 mr-2"></i>Date: ${dateStr}
           </h3>
-          <button class="delete" style="background:none;border:none;font-size:18px;cursor:pointer;color:#64748b;" onclick="closeModal('cal-day-modal')">×</button>
+          <button class="delete" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;line-height:1;" onclick="closeModal('cal-day-modal')">×</button>
         </header>
         <section class="modal-card-body" style="padding:16px;max-height:75vh;overflow-y:auto;">
           <div style="margin-bottom:16px;">
@@ -1651,7 +1697,7 @@ window.openDayEventsModal = function(dateStr) {
                       </div>
                       ${e.description ? `<div style="font-size:12px;color:#475569;margin-top:4px;">${esc(e.description)}</div>` : ""}
                     </div>
-                    <button style="background:none;border:none;color:#ef4444;cursor:pointer;padding:4px;" onclick="delEvent(${e.id}); closeModal('cal-day-modal');" title="Delete event">
+                    <button style="background:none;border:none;color:#ef4444;cursor:pointer;padding:4px;" onclick="delEventAndRefreshModal(${e.id}, '${dateStr}')" title="Delete event">
                       <i class="fa-solid fa-trash-can"></i>
                     </button>
                   </div>
@@ -1671,11 +1717,11 @@ window.openDayEventsModal = function(dateStr) {
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                 <div>
                   <label style="font-size:11px;color:#64748b;display:block;margin-bottom:2px;">Start Time</label>
-                  <input id="modal-ev-start" type="datetime-local" value="${dateStr}T${String(9 + dayEvs.length).padStart(2, '0')}:00" class="border p-1.5 rounded w-full text-xs" style="background:#fff;" />
+                  <input id="modal-ev-start" type="datetime-local" value="${dateStr}T${String(9 + (dayEvs.length % 12)).padStart(2, '0')}:00" class="border p-1.5 rounded w-full text-xs" style="background:#fff;" />
                 </div>
                 <div>
                   <label style="font-size:11px;color:#64748b;display:block;margin-bottom:2px;">End Time</label>
-                  <input id="modal-ev-end" type="datetime-local" value="${dateStr}T${String(10 + dayEvs.length).padStart(2, '0')}:00" class="border p-1.5 rounded w-full text-xs" style="background:#fff;" />
+                  <input id="modal-ev-end" type="datetime-local" value="${dateStr}T${String(10 + (dayEvs.length % 12)).padStart(2, '0')}:00" class="border p-1.5 rounded w-full text-xs" style="background:#fff;" />
                 </div>
               </div>
               <input id="modal-ev-doc" type="number" placeholder="Associated Document ID (optional)" class="border p-2 rounded w-full text-sm" style="background:#fff;" />
@@ -1694,6 +1740,17 @@ window.openDayEventsModal = function(dateStr) {
   const wrapper = document.createElement("div");
   wrapper.innerHTML = modalHtml;
   document.body.appendChild(wrapper.firstElementChild);
+  setTimeout(() => {
+    const t = $("modal-ev-title");
+    if (t) t.focus();
+  }, 100);
+};
+
+window.delEventAndRefreshModal = async function(id, dateStr) {
+  await apiFetch(`/calendar/${id}`, { method: "DELETE" });
+  toast("Event deleted");
+  await renderCalendar();
+  openDayEventsModal(dateStr);
 };
 
 window.openAddEventModal = function(prefilledDateStr) {
@@ -1724,9 +1781,8 @@ window.createEventFromModal = async function(dateStr) {
   });
 
   toast("Event added successfully", "success");
-  closeModal("cal-day-modal");
   await renderCalendar();
-  // Keep modal or re-open to allow adding more events immediately
+  // Keep modal open to allow adding more events immediately on that date
   openDayEventsModal(dateStr);
 };
 
@@ -1750,7 +1806,8 @@ window.saveCalEvent = async function() {
   toast("Event created", "success");
   if ($("cal-title")) $("cal-title").value = "";
   if ($("cal-desc")) $("cal-desc").value = "";
-  renderCalendar();
+  await renderCalendar();
+  if (_calSelectedDate) selectCalDate(_calSelectedDate);
 };
 window.createEvent = window.saveCalEvent;
 window.addCalendarEvent = window.saveCalEvent;
@@ -1760,7 +1817,8 @@ async function saveCalEvent() { return window.saveCalEvent(); }
 async function delEvent(id) {
   await apiFetch(`/calendar/${id}`, { method: "DELETE" });
   toast("Event deleted");
-  renderCalendar();
+  await renderCalendar();
+  if (_calSelectedDate) selectCalDate(_calSelectedDate);
 }
 
 async function renderTasks() {
