@@ -67,6 +67,17 @@
             Remember password
           </label>
           <button type="button" onclick="login()" class="btn-login">Sign in</button>
+          
+          <div style="display:flex; align-items:center; gap:10px; margin:14px 0 10px;">
+            <div style="flex:1; height:1px; background:#e2e8f0;"></div>
+            <span style="font-size:11px; color:#94a3b8; font-weight:600; text-transform:uppercase;">or passwordless</span>
+            <div style="flex:1; height:1px; background:#e2e8f0;"></div>
+          </div>
+
+          <button type="button" onclick="loginWithBiometrics()" class="btn-biometrics" id="btn-bio-login" style="width:100%; height:42px; border:1.5px solid #0d9488; background:#f0fdfa; color:#0f766e; border-radius:10px; font-weight:600; font-size:13.5px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; transition:all 0.2s ease;" onmouseover="this.style.background='#ccfbf1'" onmouseout="this.style.background='#f0fdfa'">
+            <i class="fa-solid fa-fingerprint text-teal-600 text-base"></i> Sign in with Biometrics / Passkey
+          </button>
+          
           <p class="login-hint" id="sso-links"><a href="/api/auth/oidc/login" id="sso-oidc">Sign in with SSO</a> · <a href="/api/auth/saml/login" id="sso-saml">SAML</a></p>
           <p id="login-err" class="login-err hidden"></p>
         </div>
@@ -122,6 +133,8 @@
             <button onclick="openFolderModal(); closeDrops()"><i class="fa-solid fa-folder-plus text-amber-500 mr-2"></i>New folder</button>
             <button onclick="exportFolder(); closeDrops()"><i class="fa-solid fa-file-zipper text-blue-500 mr-2"></i>Export folder ZIP</button>
             <button onclick="saveCurrentQuery(); closeDrops()"><i class="fa-solid fa-bookmark text-teal-500 mr-2"></i>Save search</button>
+            <div class="sep"></div>
+            <a href="/manual" target="_blank" onclick="closeDrops()" style="display:flex; align-items:center; padding:8px 14px; color:inherit; text-decoration:none; font-size:13px;"><i class="fa-solid fa-book-open text-teal-600 mr-2"></i>User Manual &amp; Guides</a>
           </div>
         </div>
         <div class="drop" id="account-drop">
@@ -130,7 +143,8 @@
             <span id="user-info"></span>
           </button>
           <div class="drop-menu drop-menu-right">
-            <button onclick="navTo('settings'); closeDrops()"><i class="fa-solid fa-gear text-slate-500 mr-2"></i>Settings</button>
+            <button onclick="navTo('settings'); closeDrops()"><i class="fa-solid fa-gear text-slate-500 mr-2"></i>Settings &amp; Passkeys</button>
+            <a href="/manual" target="_blank" onclick="closeDrops()" style="display:flex; align-items:center; padding:8px 14px; color:inherit; text-decoration:none; font-size:13px;"><i class="fa-solid fa-book-open text-teal-600 mr-2"></i>User Manual</a>
             <button onclick="toggleTheme(); closeDrops()"><i class="fa-solid fa-circle-half-stroke text-indigo-500 mr-2"></i>Toggle theme</button>
             <div class="sep"></div>
             <button onclick="logout()"><i class="fa-solid fa-arrow-right-from-bracket text-red-500 mr-2"></i>Sign out</button>

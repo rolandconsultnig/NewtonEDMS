@@ -13,6 +13,44 @@ class Token(BaseModel):
     token_type: str
 
 
+class BiometricRegisterOptionsReq(BaseModel):
+    name: str | None = "Passkey / Biometrics"
+
+
+class BiometricRegisterVerifyReq(BaseModel):
+    credential_id: str
+    public_key: str
+    client_data_json: str | None = None
+    attestation_object: str | None = None
+    name: str | None = "Passkey / Biometrics"
+    device_type: str | None = "platform"
+
+
+class BiometricLoginOptionsReq(BaseModel):
+    username: str | None = None
+
+
+class BiometricLoginVerifyReq(BaseModel):
+    credential_id: str
+    authenticator_data: str | None = None
+    client_data_json: str | None = None
+    signature: str | None = None
+    user_handle: str | None = None
+    username: str | None = None
+    remember: bool | None = False
+
+
+class BiometricCredentialOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    credential_id: str
+    name: str | None
+    device_type: str | None
+    created_at: datetime | None
+    last_used_at: datetime | None
+
+
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -325,3 +325,77 @@ def test_import_scan_denied_to_manager(client, admin_token, tmp_path, monkeypatc
         client.post(f"/api/import/folders/{imp['id']}/scan", headers=_auth(mgr_tok)).status_code
         == 403
     )
+
+
+# ---------------------------------------------------------------------------
+# Biometrics / Passkeys & Anti-Breach Tests
+# ---------------------------------------------------------------------------
+def test_biometrics_registration_and_login(client):
+    h = _register(client, "bio_user_1", "Biopass123!")
+
+    # 1. Get registration options
+    reg_opts = client.post("/api/auth/biometrics/register-options", headers=h).json()
+    assert "challenge" in reg_opts
+    assert reg_opts["rp"]["name"] == "NewtonEDMS Enterprise"
+
+    # 2. Verify / store credential
+    cred_id = "cred_test_abc123"
+    pub_key = "pk_test_es256_xyz"
+    r_reg = client.post(
+        "/api/auth/biometrics/register-verify",
+        headers=h,
+        json={
+            "credential_id": cred_id,
+            "public_key": pub_key,
+            "name": "My Touch ID / Windows Hello",
+            "device_type": "platform",
+        },
+    )
+    assert r_reg.status_code == 200
+    assert r_reg.json()["ok"] is True
+
+    # 3. List registered credentials
+    creds = client.get("/api/auth/biometrics/credentials", headers=h).json()
+    assert len(creds) >= 1
+    assert creds[0]["credential_id"] == cred_id
+    assert creds[0]["name"] == "My Touch ID / Windows Hello"
+
+    # 4. Get login options
+    log_opts = client.post(
+        "/api/auth/biometrics/login-options",
+        json={"username": "bio_user_1"},
+    ).json()
+    assert "challenge" in log_opts
+    assert len(log_opts["allowCredentials"]) >= 1
+    assert log_opts["allowCredentials"][0]["id"] == cred_id
+
+    # 5. Verify biometrics login (passwordless)
+    r_login = client.post(
+        "/api/auth/biometrics/login-verify",
+        json={
+            "credential_id": cred_id,
+            "username": "bio_user_1",
+            "signature": "sig_mock",
+        },
+    )
+    assert r_login.status_code == 200
+    login_body = r_login.json()
+    assert "access_token" in login_body
+    assert login_body["token_type"] == "bearer"
+
+    # 6. Verify authentication with the issued token
+    bio_tok = login_body["access_token"]
+    me = client.get("/api/auth/me", headers=_auth(bio_tok)).json()
+    assert me["username"] == "bio_user_1"
+
+    # 7. Delete / Revoke biometric credential
+    cred_db_id = creds[0]["id"]
+    r_del = client.delete(f"/api/auth/biometrics/credentials/{cred_db_id}", headers=_auth(bio_tok))
+    assert r_del.status_code == 200
+
+
+def test_path_traversal_blocking(client):
+    # Path traversal patterns must be rejected
+    r = client.get("/api/documents/%2e%2e/%2e%2e/etc/passwd")
+    assert r.status_code == 400
+    assert "Path Traversal" in r.json().get("detail", "")

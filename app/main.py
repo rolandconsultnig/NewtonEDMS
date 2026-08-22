@@ -103,9 +103,19 @@ app.add_middleware(
 
 @app.middleware("http")
 async def path_normalization_middleware(request: Request, call_next):
-    """Normalize accidentally duplicated /api/api/ prefixes."""
-    if request.scope.get("path", "").startswith("/api/api/"):
-        request.scope["path"] = request.scope["path"][4:]
+    """Normalize accidentally duplicated /api/api/ prefixes and block path traversal attacks."""
+    from fastapi.responses import JSONResponse
+
+    raw_path = request.scope.get("path", "")
+    # Defense against directory traversal injection attempts
+    if ".." in raw_path or "%2e%2e" in raw_path.lower() or "..\\" in raw_path or "%2f" in raw_path.lower():
+        if "/../" in raw_path or raw_path.startswith("../") or "/..\\" in raw_path or "%2e%2e" in raw_path.lower():
+            return JSONResponse(
+                status_code=400,
+                content={"detail": "Invalid path sequence detected (Path Traversal Protection)"},
+            )
+    if raw_path.startswith("/api/api/"):
+        request.scope["path"] = raw_path[4:]
     return await call_next(request)
 
 
@@ -200,6 +210,15 @@ def scan_page():
     page = FRONTEND_DIR / "scan.html"
     if not page.exists():
         return HTMLResponse("missing", status_code=404)
+    return HTMLResponse(page.read_text(encoding="utf-8"))
+
+
+@app.get("/manual", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/manual.html", response_class=HTMLResponse, include_in_schema=False)
+def manual_page():
+    page = FRONTEND_DIR / "manual.html"
+    if not page.exists():
+        return HTMLResponse("<h1>Manual coming soon</h1>", status_code=200)
     return HTMLResponse(page.read_text(encoding="utf-8"))
 
 

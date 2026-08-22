@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NewtonEDMS — User Manual & Enterprise Documentation</title>
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico" />
+  <link rel="stylesheet" href="/static/tailwind.css?v=newton-v11" />
+  <link rel="stylesheet" href="/static/fontawesome/all.min.css" />
+  <link rel="stylesheet" href="/static/skin.css?v=newton-v11" />
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f8fafc; color: #1e293b; }
+    .sidebar-link { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; color: #475569; font-size: 14px; font-weight: 500; text-decoration: none; transition: all 0.2s ease; }
+    .sidebar-link:hover, .sidebar-link.active { background: #f0fdfa; color: #0d9488; font-weight: 600; }
+    .doc-img { border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.1); margin: 20px 0 28px; width: 100%; max-height: 520px; object-fit: cover; }
+    .badge-feature { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: #f0fdfa; color: #0f766e; border: 1px solid #ccfbf1; border-radius: 9999px; font-size: 12px; font-weight: 600; }
+    h2 { font-size: 26px; font-weight: 700; color: #0f172a; margin-top: 36px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0; }
+    h3 { font-size: 19px; font-weight: 600; color: #1e293b; margin-top: 24px; margin-bottom: 10px; }
+    p, li { font-size: 15px; line-height: 1.7; color: #334155; }
+    table { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 14px; }
+    th { background: #f1f5f9; text-align: left; padding: 10px 14px; font-weight: 600; color: #334155; border: 1px solid #cbd5e1; }
+    td { padding: 10px 14px; border: 1px solid #e2e8f0; }
+  </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <a href="/" class="flex items-center gap-3 text-slate-900 font-bold text-lg text-decoration-none">
+          <img src="/static/logo.png" alt="NewtonEDMS Logo" style="height: 46px; width: auto; object-fit: contain;" />
+          <span>Newton<span class="text-teal-600">EDMS</span> Manual</span>
+        </a>
+        <span class="badge-feature"><i class="fa-solid fa-shield-halved"></i> Enterprise Edition</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <a href="/docs" target="_blank" class="text-sm font-medium text-slate-600 hover:text-teal-600 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition"><i class="fa-solid fa-code mr-1.5"></i> API Docs</a>
+        <a href="/" class="bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm transition flex items-center gap-2">
+          <i class="fa-solid fa-arrow-left"></i> Back to Workspace
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <div class="max-w-7xl mx-auto px-6 py-8 flex-1 grid grid-cols-1 md:grid-cols-4 gap-8">
+    
+    <!-- Sidebar -->
+    <aside class="md:col-span-1">
+      <div class="sticky top-24 bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-1">
+        <div class="text-xs font-bold uppercase tracking-wider text-slate-400 px-3 py-2">Documentation</div>
+        <a href="#overview" class="sidebar-link active"><i class="fa-solid fa-layer-group text-teal-600"></i> 1. System Overview</a>
+        <a href="#biometrics" class="sidebar-link"><i class="fa-solid fa-fingerprint text-teal-600"></i> 2. Biometrics & Security</a>
+        <a href="#dashboard" class="sidebar-link"><i class="fa-solid fa-chart-pie text-teal-600"></i> 3. Analytics Dashboard</a>
+        <a href="#documents" class="sidebar-link"><i class="fa-solid fa-folder-tree text-teal-600"></i> 4. Document Repository</a>
+        <a href="#workflows" class="sidebar-link"><i class="fa-solid fa-diagram-project text-teal-600"></i> 5. Tasks & Approvals</a>
+        <a href="#suites" class="sidebar-link"><i class="fa-solid fa-briefcase text-teal-600"></i> 6. Industry Suites</a>
+        <a href="#integrations" class="sidebar-link"><i class="fa-solid fa-plug text-teal-600"></i> 7. Protocols & WOPI</a>
+        <a href="#admin" class="sidebar-link"><i class="fa-solid fa-shield-check text-teal-600"></i> 8. Admin & Audit Logs</a>
+      </div>
+    </aside>
+
+    <!-- Content Area -->
+    <main class="md:col-span-3 bg-white p-8 md:p-10 rounded-2xl border border-slate-200 shadow-sm space-y-12">
+      
+      <!-- 1. System Overview -->
+      <section id="overview">
+        <h2>1. System Overview & Architecture</h2>
+        <p>NewtonEDMS is an end-to-end enterprise document management platform combining high-throughput capture, OCR extraction, AI semantic discovery, and multi-vertical business suites into a cohesive, secure workspace.</p>
+        
+        <img src="/static/img/manual_dashboard.jpg" alt="NewtonEDMS Enterprise Dashboard" class="doc-img" />
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+            <h4 class="font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-cloud-arrow-up text-teal-600"></i> Ingestion Gateway</h4>
+            <p class="text-sm text-slate-600 mt-1">Direct drag & drop, physical scanner drivers, hot folder automation, and inbound email-to-folder gateway.</p>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+            <h4 class="font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-brain text-purple-600"></i> AI & OCR Engine</h4>
+            <p class="text-sm text-slate-600 mt-1">Automatic text extraction via Tesseract OCR, metadata classification, and retrieval-augmented QA.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Biometrics Security -->
+      <section id="biometrics">
+        <h2>2. Authentication & Biometrics Security</h2>
+        <p>NewtonEDMS incorporates FIDO2 WebAuthn technology, allowing users to sign in without passwords using their device's native biometric hardware.</p>
+
+        <div class="p-5 rounded-xl bg-teal-50 border border-teal-200 my-6">
+          <h3 class="text-teal-900 font-bold mt-0 flex items-center gap-2"><i class="fa-solid fa-fingerprint text-teal-600"></i> Supported Biometric Methods</h3>
+          <ul class="list-disc list-inside mt-2 space-y-1 text-teal-800 text-sm">
+            <li><b>Windows Hello</b> (Fingerprint reader, Facial recognition camera, PIN)</li>
+            <li><b>Apple Touch ID & Face ID</b> (MacBook, iPhone, iPad)</li>
+            <li><b>Android Biometrics</b> (In-screen fingerprint & face unlock)</li>
+            <li><b>Hardware Security Keys</b> (YubiKey, Titan Security Key, FIDO2 USB/NFC tokens)</li>
+          </ul>
+        </div>
+
+        <h3>How to Enroll Biometrics:</h3>
+        <ol class="list-decimal list-inside space-y-2 text-slate-700 text-sm">
+          <li>Log into NewtonEDMS and navigate to <b>Settings</b> from the top-right user menu.</li>
+          <li>In the <b>Biometrics & Passkeys</b> card, click <b>"+ Register This Device"</b>.</li>
+          <li>Confirm the biometric prompt on your device (Touch your sensor or glance at the camera).</li>
+          <li>Your passkey is registered and securely saved!</li>
+        </ol>
+
+        <h3 class="mt-6">Hacking & Security Breach Protections:</h3>
+        <ul class="list-disc list-inside space-y-1.5 text-slate-700 text-sm">
+          <li><b>Account Lockout Protection:</b> Blocks brute-force attacks by locking accounts after 5 consecutive failed logins.</li>
+          <li><b>Path Traversal Defense:</b> Strict canonical path verification blocks directory escaping attempts (`../` and `%2e%2e`).</li>
+          <li><b>Defensive Security Headers:</b> Full HSTS, CSP, and X-Content-Type-Options protection.</li>
+        </ul>
+      </section>
+
+      <!-- 3. Dashboard -->
+      <section id="dashboard">
+        <h2>3. Operational Analytics & Scheduler</h2>
+        <p>The main dashboard aggregates real-time metrics, upcoming calendar deadlines, active workflows, and instant notifications.</p>
+
+        <ul class="list-disc list-inside space-y-2 mt-4 text-slate-700 text-sm">
+          <li><b>Document Growth & Status:</b> Visualizes repository volume and active approvals.</li>
+          <li><b>Interactive Calendar:</b> Click any date to view and schedule multiple deadlines, reviews, or team events.</li>
+          <li><b>Live Notification Bell:</b> Real-time badge counter updating every 25 seconds for immediate activity alerts.</li>
+        </ul>
+      </section>
+
+      <!-- 4. Document Repository -->
+      <section id="documents">
+        <h2>4. Document Management & Repository Workspace</h2>
+        <p>Manage documents with hierarchical folder trees, drag-and-drop batch upload, full-text token search, and rich metadata properties.</p>
+
+        <img src="/static/img/manual_documents.jpg" alt="Document Repository" class="doc-img" />
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+            <h4 class="font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-blue-600"></i> Version Control</h4>
+            <p class="text-sm text-slate-600 mt-1">Automatic version increments, audit history, and one-click rollback to historical snapshots.</p>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+            <h4 class="font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-file-pen text-amber-600"></i> Microsoft Office 365 WOPI</h4>
+            <p class="text-sm text-slate-600 mt-1">Edit Word, Excel, and PowerPoint documents collaboratively inside the browser.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. Tasks & Approvals -->
+      <section id="workflows">
+        <h2>5. Workflows, Tasks & Approvals Engine</h2>
+        <p>Streamline document approvals with custom assignees, SLA timers, electronic sign-offs, and immutable audit logs.</p>
+
+        <img src="/static/img/manual_workflows.jpg" alt="Enterprise Document Approval Process" class="doc-img" />
+
+        <h3>Creating a New Task:</h3>
+        <p>From the <b>Tasks</b> navigation tab, click <b>"+ Add New Task"</b> to define assignees, priority levels, linked documents, and target SLA due dates.</p>
+      </section>
+
+      <!-- 6. Industry Suites -->
+      <section id="suites">
+        <h2>6. Specialized Industry Enterprise Suites</h2>
+        <p>Deploy specialized vertical modules instantly configured for legal, financial, clinical, and insurance workflows.</p>
+
+        <img src="/static/img/manual_suites.jpg" alt="Modern Enterprise Business Suite Overview" class="doc-img" />
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+            <h4 class="font-bold text-slate-800"><i class="fa-solid fa-gavel text-amber-600 mr-2"></i> 1. Legal Matters & Bates Stamping</h4>
+            <p class="text-sm text-slate-600 mt-1">Matter docketing, automated Bates numbering, and legal hold retention protection.</p>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+            <h4 class="font-bold text-slate-800"><i class="fa-solid fa-calculator text-blue-600 mr-2"></i> 2. Accounting 3-Way Invoice Match</h4>
+            <p class="text-sm text-slate-600 mt-1">Automated PO, goods receipt, and vendor invoice reconciliation.</p>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+            <h4 class="font-bold text-slate-800"><i class="fa-solid fa-heart-pulse text-rose-600 mr-2"></i> 3. Healthcare DICOM PACS & HL7</h4>
+            <p class="text-sm text-slate-600 mt-1">Web medical imaging viewer and HL7 / FHIR clinical message interchange.</p>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+            <h4 class="font-bold text-slate-800"><i class="fa-solid fa-car-burst text-emerald-600 mr-2"></i> 4. Insurance Claims FNOL</h4>
+            <p class="text-sm text-slate-600 mt-1">First Notice of Loss intake, claim adjusters assignment, and policy administration.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 7. Integrations -->
+      <section id="integrations">
+        <h2>7. Enterprise Protocols & Integrations</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Protocol</th>
+              <th>Endpoint URL</th>
+              <th>Application</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>Microsoft WOPI</b></td>
+              <td><code>/wopi/files/{id}</code></td>
+              <td>Office 365, Teams, and OnlyOffice integration</td>
+            </tr>
+            <tr>
+              <td><b>WebDAV</b></td>
+              <td><code>/webdav/</code></td>
+              <td>Native Windows Explorer / macOS Finder drive mapping</td>
+            </tr>
+            <tr>
+              <td><b>CMIS 1.1</b></td>
+              <td><code>/cmis/atom</code></td>
+              <td>OASIS Enterprise Content Management standard</td>
+            </tr>
+            <tr>
+              <td><b>REST API</b></td>
+              <td><code>/api/</code></td>
+              <td>Interactive OpenAPI documentation at <code>/docs</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 8. Administration -->
+      <section id="admin">
+        <h2>8. Administration, Security & Auditing</h2>
+        <p>Administrators have complete control over user roles (`superadmin`, `admin`, `manager`, `user`), group permissions, storage quotas, and immutable audit trails.</p>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-white border-t border-slate-200 py-6 mt-12 text-center text-sm text-slate-500">
+    <div class="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div>© 2026 NewtonEDMS. All rights reserved.</div>
+      <div class="flex items-center gap-6">
+        <a href="/" class="hover:text-teal-600">Workspace</a>
+        <a href="/docs" target="_blank" class="hover:text-teal-600">API Documentation</a>
+        <a href="/api/system/health" target="_blank" class="hover:text-teal-600">System Health</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

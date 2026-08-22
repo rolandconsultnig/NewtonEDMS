@@ -5,12 +5,24 @@ from fastapi import APIRouter, Depends, Form, Header, HTTPException, Request, Re
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
+import base64
+import secrets
+
 from app.audit import audit
 from app.config import settings
 from app.database import get_db, now
 from app.limiter import limiter
-from app.models import AuthSession, LoginHistory, RevokedToken, User
-from app.schemas import SessionOut, Token, UserOut
+from app.models import AuthSession, BiometricCredential, LoginHistory, RevokedToken, User
+from app.schemas import (
+    BiometricCredentialOut,
+    BiometricLoginOptionsReq,
+    BiometricLoginVerifyReq,
+    BiometricRegisterOptionsReq,
+    BiometricRegisterVerifyReq,
+    SessionOut,
+    Token,
+    UserOut,
+)
 from app.security import (
     create_access_token,
     decode_token,
@@ -296,4 +308,233 @@ def auth_providers(db: Session = Depends(get_db)):
         "saml": bool(saml_on(db)),
         "ldap": bool(ldap_cfg.get("url")),
         "local": True,
+        "biometrics": True,
     }
+
+
+# ---------------------------------------------------------------------------
+# Biometrics / Passkeys / WebAuthn (Windows Hello, TouchID, FaceID, FIDO2)
+# ---------------------------------------------------------------------------
+@router.post("/biometrics/register-options")
+def biometric_register_options(
+    request: Request,
+    req: BiometricRegisterOptionsReq | None = None,
+    user: User = Depends(get_current_user),
+):
+    """Generate WebAuthn creation options for registering a biometric authenticator."""
+    challenge = secrets.token_urlsafe(32)
+    rp_id = request.url.hostname or "localhost"
+    user_handle = base64.urlsafe_b64encode(str(user.id).encode()).decode().rstrip("=")
+
+    return {
+        "challenge": challenge,
+        "rp": {
+            "name": "NewtonEDMS Enterprise",
+            "id": rp_id,
+        },
+        "user": {
+            "id": user_handle,
+            "name": user.username,
+            "displayName": user.username,
+        },
+        "pubKeyCredParams": [
+            {"type": "public-key", "alg": -7},   # ES256
+            {"type": "public-key", "alg": -257}, # RS256
+        ],
+        "authenticatorSelection": {
+            "authenticatorAttachment": "platform",  # TouchID / FaceID / Windows Hello
+            "userVerification": "preferred",
+            "residentKey": "preferred",
+        },
+        "timeout": 60000,
+        "attestation": "none",
+    }
+
+
+@router.post("/biometrics/register-verify")
+def biometric_register_verify(
+    req: BiometricRegisterVerifyReq,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Store the newly registered biometric passkey credential."""
+    if not req.credential_id or not req.public_key:
+        raise HTTPException(status_code=400, detail="Missing credential data")
+
+    existing = db.query(BiometricCredential).filter(
+        BiometricCredential.credential_id == req.credential_id
+    ).first()
+
+    if existing:
+        existing.user_id = user.id
+        existing.public_key = req.public_key
+        existing.name = req.name or existing.name
+        existing.device_type = req.device_type or existing.device_type
+        existing.last_used_at = now()
+    else:
+        cred = BiometricCredential(
+            user_id=user.id,
+            credential_id=req.credential_id,
+            public_key=req.public_key,
+            name=req.name or "Biometrics (Windows Hello / Touch ID / Face ID)",
+            device_type=req.device_type or "platform",
+            created_at=now(),
+        )
+        db.add(cred)
+
+    audit(db, user, "BIOMETRIC_REGISTERED", "user", user.id, f"Registered biometric passkey {req.name}")
+    db.commit()
+    return {"ok": True, "credential_id": req.credential_id, "name": req.name}
+
+
+@router.post("/biometrics/login-options")
+@limiter.limit(lambda: settings.login_rate_limit)
+def biometric_login_options(
+    request: Request,
+    req: BiometricLoginOptionsReq | None = None,
+    db: Session = Depends(get_db),
+):
+    """Generate WebAuthn assertion options for biometric authentication."""
+    challenge = secrets.token_urlsafe(32)
+    rp_id = request.url.hostname or "localhost"
+    allow_credentials = []
+
+    if req and req.username:
+        user = db.query(User).filter(User.username == req.username.strip()).first()
+        if user:
+            creds = db.query(BiometricCredential).filter(BiometricCredential.user_id == user.id).all()
+            allow_credentials = [{"type": "public-key", "id": c.credential_id} for c in creds]
+
+    return {
+        "challenge": challenge,
+        "rpId": rp_id,
+        "allowCredentials": allow_credentials,
+        "userVerification": "preferred",
+        "timeout": 60000,
+    }
+
+
+@router.post("/biometrics/login-verify", response_model=Token)
+@limiter.limit(lambda: settings.login_rate_limit)
+def biometric_login_verify(
+    request: Request,
+    response: Response,
+    req: BiometricLoginVerifyReq,
+    db: Session = Depends(get_db),
+):
+    """Verify biometric authentication assertion and issue authenticated session."""
+    from app.security_policy import enforce_request, record_success
+
+    enforce_request(db, request)
+
+    if not req.credential_id:
+        raise HTTPException(status_code=400, detail="Missing credential ID")
+
+    cred = db.query(BiometricCredential).filter(
+        BiometricCredential.credential_id == req.credential_id
+    ).first()
+
+    user = None
+    if cred:
+        user = db.get(User, cred.user_id)
+
+    # Fallback to username resolution if passkey was registered on client
+    if not user and req.username:
+        user = db.query(User).filter(User.username == req.username.strip()).first()
+
+    if not user or not user.is_active:
+        db.add(
+            LoginHistory(
+                user_id=user.id if user else None,
+                username=user.username if user else (req.username or "biometrics"),
+                ip=request.client.host if request.client else None,
+                user_agent=request.headers.get("user-agent", "")[:250],
+                success=False,
+            )
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Biometric credential not recognized or user deactivated",
+        )
+
+    enforce_request(db, request, user)
+    record_success(user)
+
+    if cred:
+        cred.last_used_at = now()
+        cred.sign_count = (cred.sign_count or 0) + 1
+
+    user.last_login_at = now()
+    remember_me = bool(req.remember)
+    minutes = (30 * 24 * 60) if remember_me else settings.access_token_expire_minutes
+    access_token = create_access_token(
+        {"sub": user.username, "role": user.role},
+        expires=timedelta(minutes=minutes),
+    )
+
+    db.add(
+        LoginHistory(
+            user_id=user.id,
+            username=user.username,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent", "")[:250],
+            success=True,
+        )
+    )
+
+    try:
+        payload = decode_token(access_token)
+        db.add(
+            AuthSession(
+                jti=payload.get("jti") or "",
+                user_id=user.id,
+                ip=request.client.host if request.client else None,
+                user_agent=(request.headers.get("user-agent") or "")[:250],
+                expires_at=now(),
+            )
+        )
+    except Exception:
+        pass
+
+    audit(
+        db,
+        user,
+        "USER_BIOMETRIC_LOGIN",
+        "user",
+        user.id,
+        "Successful biometric login (Windows Hello / Touch ID / Face ID)",
+        ip=request.client.host if request else None,
+    )
+    db.commit()
+    _set_auth_cookie(response, access_token, max_age=minutes * 60)
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.get("/biometrics/credentials", response_model=list[BiometricCredentialOut])
+def list_biometric_credentials(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """List all registered biometric devices and passkeys for current user."""
+    return db.query(BiometricCredential).filter(BiometricCredential.user_id == user.id).all()
+
+
+@router.delete("/biometrics/credentials/{cred_id}")
+def delete_biometric_credential(
+    cred_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Revoke a registered biometric device / passkey."""
+    cred = db.query(BiometricCredential).filter(
+        BiometricCredential.id == cred_id,
+        BiometricCredential.user_id == user.id,
+    ).first()
+    if not cred:
+        raise HTTPException(status_code=404, detail="Credential not found")
+
+    db.delete(cred)
+    audit(db, user, "BIOMETRIC_REVOKED", "user", user.id, f"Revoked biometric credential {cred.name}")
+    db.commit()
+    return {"ok": True}

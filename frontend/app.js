@@ -333,6 +333,193 @@ async function login() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// WebAuthn / Passkeys / Biometrics (Windows Hello, TouchID, FaceID)
+// ---------------------------------------------------------------------------
+function base64urlToBuffer(base64url) {
+  const padding = "=".repeat((4 - (base64url.length % 4)) % 4);
+  const base64 = (base64url + padding).replace(/\-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray.buffer;
+}
+
+function bufferToBase64url(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+window.loginWithBiometrics = async function() {
+  const errEl = $("login-err");
+  if (errEl) { errEl.textContent = ""; errEl.classList.add("hidden"); }
+
+  if (!window.PublicKeyCredential) {
+    const msg = "WebAuthn / Biometrics is not supported in this browser or requires an HTTPS / localhost origin.";
+    if (errEl) { errEl.textContent = msg; errEl.classList.remove("hidden"); }
+    toast(msg, "warning");
+    return;
+  }
+
+  const username = (val("username") || "").trim();
+  const remember = $("remember-password") && $("remember-password").checked;
+
+  try {
+    const optRes = await fetch(api("/auth/biometrics/login-options"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: username || null }),
+      ...FETCH_OPTS,
+    });
+    if (!optRes.ok) throw new Error("Failed to initialize biometric challenge");
+    const options = await optRes.json();
+
+    const challengeBuffer = base64urlToBuffer(options.challenge);
+    const allowCredentials = (options.allowCredentials || []).map(c => ({
+      type: "public-key",
+      id: base64urlToBuffer(c.id),
+    }));
+
+    const publicKeyCredentialRequestOptions = {
+      challenge: challengeBuffer,
+      rpId: options.rpId || window.location.hostname,
+      allowCredentials: allowCredentials.length > 0 ? allowCredentials : undefined,
+      userVerification: options.userVerification || "preferred",
+      timeout: options.timeout || 60000,
+    };
+
+    const assertion = await navigator.credentials.get({
+      publicKey: publicKeyCredentialRequestOptions,
+    });
+
+    if (!assertion) throw new Error("Biometric authentication was cancelled or timed out");
+
+    const credentialId = bufferToBase64url(assertion.rawId);
+    const clientDataJSON = bufferToBase64url(assertion.response.clientDataJSON);
+    const authenticatorData = bufferToBase64url(assertion.response.authenticatorData);
+    const signature = bufferToBase64url(assertion.response.signature);
+    const userHandle = assertion.response.userHandle ? bufferToBase64url(assertion.response.userHandle) : null;
+
+    const verifyRes = await fetch(api("/auth/biometrics/login-verify"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        credential_id: credentialId,
+        client_data_json: clientDataJSON,
+        authenticator_data: authenticatorData,
+        signature: signature,
+        user_handle: userHandle,
+        username: username || null,
+      }),
+      ...FETCH_OPTS,
+    });
+
+    if (!verifyRes.ok) {
+      const errTxt = await verifyRes.text();
+      let msg = "Biometric verification failed";
+      try { msg = JSON.parse(errTxt).detail || msg; } catch (e) { msg = errTxt || msg; }
+      throw new Error(msg);
+    }
+
+    toast("Biometric authentication successful!", "success");
+    const me = await fetch(api("/auth/me"), { ...FETCH_OPTS });
+    currentUser = await me.json();
+    await enterApp();
+  } catch (e) {
+    if (e.name === "NotAllowedError") {
+      toast("Biometric verification cancelled or timed out", "info");
+    } else {
+      if (errEl) { errEl.textContent = e.message; errEl.classList.remove("hidden"); }
+      toast(e.message, "error");
+    }
+  }
+};
+
+window.registerBiometrics = async function() {
+  if (!window.PublicKeyCredential) {
+    toast("WebAuthn / Biometrics is not supported in this browser or origin", "warning");
+    return;
+  }
+
+  const deviceName = prompt("Enter a label for this biometric device (e.g. Windows Hello / Touch ID / Face ID):", "Windows Hello / Touch ID");
+  if (deviceName === null) return;
+
+  try {
+    const optRes = await apiFetch("/auth/biometrics/register-options", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: deviceName.trim() || "Biometrics / Passkey" }),
+    });
+
+    const challengeBuffer = base64urlToBuffer(optRes.challenge);
+    const userIdBuffer = base64urlToBuffer(optRes.user.id);
+
+    const createOptions = {
+      challenge: challengeBuffer,
+      rp: optRes.rp,
+      user: {
+        id: userIdBuffer,
+        name: optRes.user.name,
+        displayName: optRes.user.displayName,
+      },
+      pubKeyCredParams: optRes.pubKeyCredParams,
+      authenticatorSelection: optRes.authenticatorSelection,
+      timeout: optRes.timeout || 60000,
+      attestation: optRes.attestation || "none",
+    };
+
+    const credential = await navigator.credentials.create({
+      publicKey: createOptions,
+    });
+
+    if (!credential) throw new Error("Biometric enrollment cancelled");
+
+    const credentialId = bufferToBase64url(credential.rawId);
+    const clientDataJSON = bufferToBase64url(credential.response.clientDataJSON);
+    const attestationObject = bufferToBase64url(credential.response.attestationObject);
+    let publicKey = credentialId;
+    if (credential.response.getPublicKey) {
+      const pk = credential.response.getPublicKey();
+      if (pk) publicKey = bufferToBase64url(pk);
+    }
+
+    await apiFetch("/auth/biometrics/register-verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        credential_id: credentialId,
+        public_key: publicKey,
+        client_data_json: clientDataJSON,
+        attestation_object: attestationObject,
+        name: deviceName.trim() || "Biometrics (Touch ID / Windows Hello)",
+        device_type: "platform",
+      }),
+    });
+
+    toast("Biometrics / Passkey registered successfully!", "success");
+    if (currentNav === "settings") renderSettings();
+  } catch (e) {
+    if (e.name === "NotAllowedError") {
+      toast("Biometric registration cancelled", "info");
+    } else {
+      toast("Registration failed: " + e.message, "error");
+    }
+  }
+};
+
+window.deleteBiometricCred = async function(id) {
+  if (!confirm("Revoke this biometric passkey?")) return;
+  await apiFetch(`/auth/biometrics/credentials/${id}`, { method: "DELETE" });
+  toast("Passkey revoked", "info");
+  renderSettings();
+};
+
 async function logout() {
   try { await fetch(api("/auth/logout"), { method: "POST", ...FETCH_OPTS }); } catch (e) { /* ignore */ }
   currentUser = null;
@@ -2334,6 +2521,7 @@ async function renderSettings() {
   const keys = (await apiFetch("/apikeys").catch(() => [])) || [];
   const logins = (await apiFetch("/logins").catch(() => [])) || [];
   const devices = (await apiFetch("/devices").catch(() => [])) || [];
+  const biocreds = (await apiFetch("/auth/biometrics/credentials").catch(() => [])) || [];
   const hours = currentUser.working_hours || {};
   $("work-settings").innerHTML = `
     <h2 class="text-lg font-bold mb-3">User settings</h2>
@@ -2345,6 +2533,12 @@ async function renderSettings() {
         <p>Density <select id="set-den"><option>compact</option><option ${currentUser.density === "standard" ? "selected" : ""}>standard</option><option>comfortable</option></select></p>
         <p>Avatar URL <input id="set-av" value="${esc(currentUser.avatar || "")}" class="border p-1 w-full" /></p>
         <button class="tb primary mt-2" onclick="saveAccountProfile()">Save</button>
+      </div>
+      <div class="bg-white rounded shadow p-4 border-l-4 border-teal-600">
+        <h3 class="font-bold mb-2 flex items-center gap-2"><i class="fa-solid fa-fingerprint text-teal-600"></i> Biometrics & Passkeys</h3>
+        <p class="text-xs text-gray-600 mb-3">Sign in securely without passwords using Windows Hello, Apple Touch ID / Face ID, or hardware security keys.</p>
+        <button onclick="registerBiometrics()" class="tb primary mb-3 flex items-center gap-2"><i class="fa-solid fa-plus"></i> Register This Device</button>
+        <ul class="text-xs space-y-1.5">${biocreds.map((c) => `<li class="flex items-center justify-between p-1.5 bg-gray-50 rounded border"><span><i class="fa-solid fa-key text-teal-600 mr-1.5"></i><b>${esc(c.name || "Passkey")}</b> <span class="text-gray-400">(${fmtDate(c.created_at)})</span></span> <button onclick="deleteBiometricCred(${c.id})" class="text-red-500 hover:text-red-700 font-bold px-1.5">Revoke</button></li>`).join("") || '<li class="text-gray-400 italic">No biometric devices enrolled</li>'}</ul>
       </div>
       <div class="bg-white rounded shadow p-4">
         <h3 class="font-bold mb-2">Two-factor authentication (TOTP)</h3>

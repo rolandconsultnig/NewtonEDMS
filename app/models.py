@@ -67,6 +67,24 @@ class User(Base):
     locked_until = Column(DateTime)
 
 
+class BiometricCredential(Base):
+    """FIDO2 / WebAuthn / Passkey / Biometrics credentials (Windows Hello, TouchID, FaceID)."""
+
+    __tablename__ = "biometric_credentials"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    credential_id = Column(String, unique=True, index=True, nullable=False)
+    public_key = Column(Text, nullable=False)
+    name = Column(String, default="Biometrics / Passkey")
+    device_type = Column(String, default="platform")  # platform | cross-platform
+    aaguid = Column(String)
+    sign_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=now)
+    last_used_at = Column(DateTime)
+
+    user = relationship("User", backref="biometric_credentials")
+
+
 class Group(Base):
     __tablename__ = "groups"
     id = Column(Integer, primary_key=True, index=True)
