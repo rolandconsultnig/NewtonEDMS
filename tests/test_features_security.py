@@ -138,6 +138,42 @@ def test_calendar_scoped_to_creator(client):
     assert len(client.get("/api/calendar", headers=bob).json()) == 1
 
 
+def test_multiple_calendar_events_on_single_date(client):
+    user = _register(client, "calmultiday")
+    # Add 3 events on the same single date (2026-08-22)
+    ev1 = client.post(
+        "/api/calendar",
+        json={"title": "Morning Case Review", "start_at": "2026-08-22T09:00:00", "end_at": "2026-08-22T10:00:00", "description": "Legal brief analysis"},
+        headers=user,
+    )
+    assert ev1.status_code == 200
+
+    ev2 = client.post(
+        "/api/calendar",
+        json={"title": "Accounting PO Reconciliation", "start_at": "2026-08-22T13:30:00", "end_at": "2026-08-22T14:30:00", "description": "Match PO-2026-001"},
+        headers=user,
+    )
+    assert ev2.status_code == 200
+
+    ev3 = client.post(
+        "/api/calendar",
+        json={"title": "Hospital Clinical Round", "start_at": "2026-08-22T16:00:00", "end_at": "2026-08-22T17:00:00", "description": "Patient MPI review"},
+        headers=user,
+    )
+    assert ev3.status_code == 200
+
+    # Retrieve all events for user
+    res = client.get("/api/calendar", headers=user)
+    assert res.status_code == 200
+    events = res.json()
+    assert len(events) == 3
+    assert [e["title"] for e in events] == [
+        "Morning Case Review",
+        "Accounting PO Reconciliation",
+        "Hospital Clinical Round",
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Workflow guards
 # ---------------------------------------------------------------------------

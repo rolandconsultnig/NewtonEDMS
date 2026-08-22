@@ -1388,53 +1388,374 @@ async function uploadDoc() {
 }
 
 // ---- Calendar / tasks / contacts / settings -------------------------------
+let _calYear = new Date().getFullYear();
+let _calMonth = new Date().getMonth();
+let _calSelectedDate = null;
+let _calEvents = [];
+
+function _fmtDateKey(year, monthIndex, day) {
+  const mm = String(monthIndex + 1).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `${year}-${mm}-${dd}`;
+}
+
 async function renderCalendar() {
-  const events = (await apiFetch("/calendar")) || [];
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const first = new Date(y, m, 1).getDay();
-  const days = new Date(y, m + 1, 0).getDate();
-  const cells = [];
-  for (let i = 0; i < first; i++) cells.push("<div></div>");
-  for (let d = 1; d <= days; d++) {
-    const dayEvents = events.filter((e) => {
-      const dt = new Date(e.start_at);
-      return dt.getFullYear() === y && dt.getMonth() === m && dt.getDate() === d;
-    });
-    cells.push(`<div class="cal-day"><b>${d}</b>${dayEvents.map((e) => `<div class="cal-ev">${esc(e.title)}</div>`).join("")}</div>`);
+  _calEvents = (await apiFetch("/calendar")) || [];
+  const today = new Date();
+  const todayKey = _fmtDateKey(today.getFullYear(), today.getMonth(), today.getDate());
+  const y = _calYear;
+  const m = _calMonth;
+
+  const monthName = new Date(y, m, 1).toLocaleString(undefined, { month: "long", year: "numeric" });
+  const firstDayIndex = new Date(y, m, 1).getDay();
+  const totalDays = new Date(y, m + 1, 0).getDate();
+  const prevMonthTotalDays = new Date(y, m, 0).getDate();
+
+  // Group events by date key YYYY-MM-DD
+  const eventsByDate = {};
+  for (const ev of _calEvents) {
+    if (!ev.start_at) continue;
+    const dt = new Date(ev.start_at);
+    if (isNaN(dt.getTime())) continue;
+    const key = _fmtDateKey(dt.getFullYear(), dt.getMonth(), dt.getDate());
+    if (!eventsByDate[key]) eventsByDate[key] = [];
+    eventsByDate[key].push(ev);
   }
+
+  const cells = [];
+
+  // 1. Previous month trailing days
+  for (let i = firstDayIndex - 1; i >= 0; i--) {
+    const d = prevMonthTotalDays - i;
+    const prevM = m === 0 ? 11 : m - 1;
+    const prevY = m === 0 ? y - 1 : y;
+    const dateKey = _fmtDateKey(prevY, prevM, d);
+    const dayEvs = eventsByDate[dateKey] || [];
+    cells.push(`
+      <div class="cal-day is-other-month" onclick="selectCalDate('${dateKey}')">
+        <div class="cal-day-header">
+          <span class="cal-day-num">${d}</span>
+          <button class="cal-quick-add" onclick="event.stopPropagation(); openAddEventModal('${dateKey}')" title="Add event on ${dateKey}">+</button>
+        </div>
+        <div class="cal-events-container">
+          ${dayEvs.slice(0, 2).map((e) => `<div class="cal-ev" title="${esc(e.title)}">${esc(e.title)}</div>`).join("")}
+          ${dayEvs.length > 2 ? `<div class="cal-ev-more">+${dayEvs.length - 2} more</div>` : ""}
+        </div>
+      </div>`);
+  }
+
+  // 2. Current month active days
+  for (let d = 1; d <= totalDays; d++) {
+    const dateKey = _fmtDateKey(y, m, d);
+    const isToday = dateKey === todayKey;
+    const isSelected = dateKey === _calSelectedDate;
+    const dayEvs = eventsByDate[dateKey] || [];
+
+    cells.push(`
+      <div class="cal-day ${isToday ? "is-today" : ""} ${isSelected ? "is-selected" : ""}" id="cal-day-${dateKey}" onclick="selectCalDate('${dateKey}')">
+        <div class="cal-day-header">
+          <span class="cal-day-num">${d}</span>
+          <button class="cal-quick-add" onclick="event.stopPropagation(); openAddEventModal('${dateKey}')" title="Add event on ${dateKey}">+</button>
+        </div>
+        <div class="cal-events-container">
+          ${dayEvs.slice(0, 3).map((e) => {
+            const timeStr = e.start_at ? new Date(e.start_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+            return `<div class="cal-ev" title="${esc(e.title)} (${timeStr})">${timeStr ? `<b>${timeStr}</b> ` : ""}${esc(e.title)}</div>`;
+          }).join("")}
+          ${dayEvs.length > 3 ? `<div class="cal-ev-more">+${dayEvs.length - 3} more</div>` : ""}
+        </div>
+      </div>`);
+  }
+
+  // 3. Next month leading days to complete 7-column grid rows
+  const remainingCells = (7 - ((firstDayIndex + totalDays) % 7)) % 7;
+  for (let d = 1; d <= remainingCells; d++) {
+    const nextM = m === 11 ? 0 : m + 1;
+    const nextY = m === 11 ? y + 1 : y;
+    const dateKey = _fmtDateKey(nextY, nextM, d);
+    const dayEvs = eventsByDate[dateKey] || [];
+    cells.push(`
+      <div class="cal-day is-other-month" onclick="selectCalDate('${dateKey}')">
+        <div class="cal-day-header">
+          <span class="cal-day-num">${d}</span>
+          <button class="cal-quick-add" onclick="event.stopPropagation(); openAddEventModal('${dateKey}')" title="Add event on ${dateKey}">+</button>
+        </div>
+        <div class="cal-events-container">
+          ${dayEvs.slice(0, 2).map((e) => `<div class="cal-ev" title="${esc(e.title)}">${esc(e.title)}</div>`).join("")}
+          ${dayEvs.length > 2 ? `<div class="cal-ev-more">+${dayEvs.length - 2} more</div>` : ""}
+        </div>
+      </div>`);
+  }
+
+  // Default prefilled datetime for quick inline bar
+  const defaultDateStr = _calSelectedDate || todayKey;
+
   $("work-calendar").innerHTML = `
-    <h2 class="text-lg font-bold mb-3">Calendar · ${now.toLocaleString(undefined, { month: "long", year: "numeric" })}</h2>
-    <div class="bg-white rounded shadow p-4 mb-3 flex flex-wrap gap-2">
-      <input id="cal-title" placeholder="Event title" class="border p-2 rounded flex-1" />
-      <input id="cal-start" type="datetime-local" class="border p-2 rounded" />
-      <input id="cal-end" type="datetime-local" class="border p-2 rounded" />
-      <input id="cal-doc" type="number" placeholder="Doc id (optional)" class="border p-2 rounded w-32" />
-      <button onclick="createEvent()" class="bg-blue-600 text-white px-3 rounded">Add</button>
+    <div class="cal-wrapper">
+      <div class="cal-nav-bar">
+        <div class="cal-nav-left">
+          <button class="cal-nav-btn" onclick="calPrevMonth()" title="Previous month"><i class="fa-solid fa-chevron-left"></i></button>
+          <button class="cal-nav-btn" onclick="calNextMonth()" title="Next month"><i class="fa-solid fa-chevron-right"></i></button>
+          <button class="cal-nav-btn" onclick="calToday()"><i class="fa-solid fa-calendar-day"></i> Today</button>
+          <span class="cal-nav-title ml-2">${monthName}</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="cal-nav-btn primary" onclick="openAddEventModal('${defaultDateStr}')">
+            <i class="fa-solid fa-plus"></i> Add Event
+          </button>
+        </div>
+      </div>
+      <div class="cal-grid">
+        ${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d) => `<div class="cal-h">${d}</div>`).join("")}
+        ${cells.join("")}
+      </div>
     </div>
-    <div class="cal-grid">${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d) => `<div class="cal-h">${d}</div>`).join("")}${cells.join("")}</div>
-    <div class="bg-white rounded shadow divide-y mt-3">
-      ${events.length ? events.map((e) => `<div class="p-3 flex justify-between">
-        <div><b>${esc(e.title)}</b><div class="text-xs text-gray-500">${fmtDate(e.start_at)} ${e.document_id ? "· doc #" + e.document_id : ""}</div></div>
-        <button class="text-red-600" onclick="delEvent(${e.id})"><i class="fa-solid fa-trash"></i></button>
-      </div>`).join("") : '<p class="p-4 text-gray-400">No events</p>'}
+
+    <!-- Quick Date Scheduler & Event Agenda Section -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+      <div class="bg-white rounded-lg shadow border p-4 md:col-span-1">
+        <h3 class="font-bold text-sm text-gray-700 mb-2 flex items-center justify-between">
+          <span><i class="fa-solid fa-calendar-plus text-blue-600 mr-1"></i> Add Event</span>
+          <span class="text-xs text-gray-500 font-normal" id="cal-selected-label">${_calSelectedDate ? "For: " + _calSelectedDate : "Click a date to select"}</span>
+        </h3>
+        <div class="space-y-2">
+          <input id="cal-title" placeholder="Event title (e.g. Policy Review, Audit)" class="border p-2 rounded w-full text-sm" />
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-xs text-gray-500 block mb-1">Start Time</label>
+              <input id="cal-start" type="datetime-local" value="${defaultDateStr}T09:00" class="border p-1.5 rounded w-full text-xs" />
+            </div>
+            <div>
+              <label class="text-xs text-gray-500 block mb-1">End Time</label>
+              <input id="cal-end" type="datetime-local" value="${defaultDateStr}T10:00" class="border p-1.5 rounded w-full text-xs" />
+            </div>
+          </div>
+          <input id="cal-doc" type="number" placeholder="Associated Document ID (optional)" class="border p-2 rounded w-full text-sm" />
+          <textarea id="cal-desc" placeholder="Notes / details (optional)" rows="2" class="border p-2 rounded w-full text-sm"></textarea>
+          <button onclick="createEvent()" class="cal-nav-btn primary w-full justify-center py-2">
+            <i class="fa-solid fa-calendar-check"></i> Save Event
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-lg shadow border p-4 md:col-span-2">
+        <h3 class="font-bold text-sm text-gray-700 mb-2 flex items-center justify-between">
+          <span><i class="fa-solid fa-list-check text-blue-600 mr-1"></i> Agenda &amp; Scheduled Events</span>
+          <span class="text-xs text-gray-500">${_calEvents.length} total registered</span>
+        </h3>
+        <div class="divide-y max-h-96 overflow-y-auto">
+          ${_calEvents.length ? _calEvents.map((e) => {
+            const dt = e.start_at ? new Date(e.start_at) : null;
+            const dtKey = dt && !isNaN(dt.getTime()) ? _fmtDateKey(dt.getFullYear(), dt.getMonth(), dt.getDate()) : "";
+            const isMatch = _calSelectedDate && dtKey === _calSelectedDate;
+            return `
+              <div class="py-2.5 px-2 flex items-center justify-between hover:bg-gray-50 rounded ${isMatch ? 'bg-blue-50/70 border-l-4 border-blue-500' : ''}">
+                <div class="flex-1 pr-2">
+                  <div class="font-semibold text-sm text-gray-800 flex items-center gap-2">
+                    ${esc(e.title)}
+                    ${e.document_id ? `<span class="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded cursor-pointer" onclick="openDocDetails(${e.document_id})"><i class="fa-solid fa-file-lines mr-1"></i>Doc #${e.document_id}</span>` : ""}
+                  </div>
+                  <div class="text-xs text-gray-500 mt-0.5">
+                    <i class="fa-regular fa-clock mr-1"></i>${fmtDate(e.start_at)} ${e.end_at ? "— " + new Date(e.end_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : ""}
+                    ${e.description ? `<span class="ml-2 text-gray-600">· ${esc(e.description)}</span>` : ""}
+                  </div>
+                </div>
+                <button class="text-red-500 hover:text-red-700 p-1.5" onclick="delEvent(${e.id})" title="Delete event">
+                  <i class="fa-solid fa-trash-can"></i>
+                </button>
+              </div>`;
+          }).join("") : '<p class="p-6 text-center text-gray-400 text-sm">No scheduled events. Click any date or use the form above to add multiple events.</p>'}
+        </div>
+      </div>
     </div>`;
 }
-async function createEvent() {
+
+window.calPrevMonth = function() {
+  _calMonth--;
+  if (_calMonth < 0) {
+    _calMonth = 11;
+    _calYear--;
+  }
+  renderCalendar();
+};
+
+window.calNextMonth = function() {
+  _calMonth++;
+  if (_calMonth > 11) {
+    _calMonth = 0;
+    _calYear++;
+  }
+  renderCalendar();
+};
+
+window.calToday = function() {
+  const d = new Date();
+  _calYear = d.getFullYear();
+  _calMonth = d.getMonth();
+  _calSelectedDate = _fmtDateKey(_calYear, _calMonth, d.getDate());
+  renderCalendar();
+};
+
+window.selectCalDate = function(dateStr) {
+  _calSelectedDate = dateStr;
+  
+  // Highlight cell
+  document.querySelectorAll(".cal-day").forEach(el => el.classList.remove("is-selected"));
+  const cell = $(`cal-day-${dateStr}`);
+  if (cell) cell.classList.add("is-selected");
+
+  // Update inline form fields
+  const startEl = $("cal-start");
+  const endEl = $("cal-end");
+  const labelEl = $("cal-selected-label");
+  if (startEl) startEl.value = `${dateStr}T09:00`;
+  if (endEl) endEl.value = `${dateStr}T10:00`;
+  if (labelEl) labelEl.textContent = `For: ${dateStr}`;
+
+  // Open day events modal inspector to allow managing/adding multiple events on this date
+  openDayEventsModal(dateStr);
+};
+
+window.openDayEventsModal = function(dateStr) {
+  const dayEvs = _calEvents.filter((ev) => {
+    if (!ev.start_at) return false;
+    const dt = new Date(ev.start_at);
+    if (isNaN(dt.getTime())) return false;
+    return _fmtDateKey(dt.getFullYear(), dt.getMonth(), dt.getDate()) === dateStr;
+  });
+
+  const modalHtml = `
+    <div id="cal-day-modal" class="modal is-active" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;">
+      <div class="modal-card" style="background:#fff;border-radius:8px;max-width:550px;width:100%;box-shadow:0 10px 25px rgba(0,0,0,0.2);overflow:hidden;animation:fadeIn 0.15s ease;">
+        <header class="modal-card-head" style="padding:14px 18px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+          <h3 style="font-weight:700;font-size:16px;color:#1e293b;margin:0;">
+            <i class="fa-solid fa-calendar-day text-blue-600 mr-2"></i>Date: ${dateStr}
+          </h3>
+          <button class="delete" style="background:none;border:none;font-size:18px;cursor:pointer;color:#64748b;" onclick="closeModal('cal-day-modal')">×</button>
+        </header>
+        <section class="modal-card-body" style="padding:16px;max-height:75vh;overflow-y:auto;">
+          <div style="margin-bottom:16px;">
+            <h4 style="font-size:13px;font-weight:700;color:#475569;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">
+              Scheduled Events on this Date (${dayEvs.length})
+            </h4>
+            ${dayEvs.length ? `
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                ${dayEvs.map(e => `
+                  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #3b82f6;padding:10px 12px;border-radius:6px;display:flex;justify-content:space-between;align-items:flex-start;">
+                    <div>
+                      <div style="font-weight:600;font-size:14px;color:#1e293b;">${esc(e.title)}</div>
+                      <div style="font-size:12px;color:#64748b;margin-top:2px;">
+                        <i class="fa-regular fa-clock mr-1"></i>${new Date(e.start_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+                        ${e.end_at ? " — " + new Date(e.end_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : ""}
+                        ${e.document_id ? ` · <span style="color:#2563eb;font-weight:500;">Doc #${e.document_id}</span>` : ""}
+                      </div>
+                      ${e.description ? `<div style="font-size:12px;color:#475569;margin-top:4px;">${esc(e.description)}</div>` : ""}
+                    </div>
+                    <button style="background:none;border:none;color:#ef4444;cursor:pointer;padding:4px;" onclick="delEvent(${e.id}); closeModal('cal-day-modal');" title="Delete event">
+                      <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                  </div>
+                `).join("")}
+              </div>
+            ` : `<p style="font-size:13px;color:#94a3b8;font-style:italic;padding:8px 0;">No events currently scheduled for this date.</p>`}
+          </div>
+
+          <hr style="border:0;border-top:1px solid #e2e8f0;margin:16px 0;" />
+
+          <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:14px;">
+            <h4 style="font-size:13px;font-weight:700;color:#0369a1;margin-bottom:10px;">
+              <i class="fa-solid fa-plus-circle mr-1"></i> Add Another Event to ${dateStr}
+            </h4>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <input id="modal-ev-title" placeholder="Event title" class="border p-2 rounded w-full text-sm" style="background:#fff;" />
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div>
+                  <label style="font-size:11px;color:#64748b;display:block;margin-bottom:2px;">Start Time</label>
+                  <input id="modal-ev-start" type="datetime-local" value="${dateStr}T${String(9 + dayEvs.length).padStart(2, '0')}:00" class="border p-1.5 rounded w-full text-xs" style="background:#fff;" />
+                </div>
+                <div>
+                  <label style="font-size:11px;color:#64748b;display:block;margin-bottom:2px;">End Time</label>
+                  <input id="modal-ev-end" type="datetime-local" value="${dateStr}T${String(10 + dayEvs.length).padStart(2, '0')}:00" class="border p-1.5 rounded w-full text-xs" style="background:#fff;" />
+                </div>
+              </div>
+              <input id="modal-ev-doc" type="number" placeholder="Associated Document ID (optional)" class="border p-2 rounded w-full text-sm" style="background:#fff;" />
+              <textarea id="modal-ev-desc" placeholder="Notes / description (optional)" rows="2" class="border p-2 rounded w-full text-sm" style="background:#fff;"></textarea>
+              <button onclick="createEventFromModal('${dateStr}')" class="cal-nav-btn primary" style="width:100%;justify-content:center;padding:8px;margin-top:4px;">
+                <i class="fa-solid fa-plus"></i> Save Event to ${dateStr}
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>`;
+
+  const existing = $("cal-day-modal");
+  if (existing) existing.remove();
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = modalHtml;
+  document.body.appendChild(wrapper.firstElementChild);
+};
+
+window.openAddEventModal = function(prefilledDateStr) {
+  openDayEventsModal(prefilledDateStr || _fmtDateKey(_calYear, _calMonth, new Date().getDate()));
+};
+
+window.createEventFromModal = async function(dateStr) {
+  const title = val("modal-ev-title");
+  if (!title || !title.trim()) {
+    toast("Please enter an event title", "warning");
+    return;
+  }
+  const startAt = val("modal-ev-start") || `${dateStr}T09:00`;
+  const endAt = val("modal-ev-end") || null;
+  const docId = val("modal-ev-doc") ? parseInt(val("modal-ev-doc"), 10) : null;
+  const desc = val("modal-ev-desc") || "";
+
   await apiFetch("/calendar", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      title: val("cal-title"),
-      start_at: val("cal-start"),
-      document_id: val("cal-doc") ? parseInt(val("cal-doc"), 10) : null,
+      title: title.trim(),
+      start_at: startAt,
+      end_at: endAt,
+      document_id: docId,
+      description: desc,
     }),
   });
+
+  toast("Event added successfully", "success");
+  closeModal("cal-day-modal");
+  await renderCalendar();
+  // Keep modal or re-open to allow adding more events immediately
+  openDayEventsModal(dateStr);
+};
+
+async function createEvent() {
+  const title = val("cal-title");
+  if (!title || !title.trim()) {
+    toast("Please enter an event title", "warning");
+    return;
+  }
+  await apiFetch("/calendar", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: title.trim(),
+      start_at: val("cal-start") || new Date().toISOString(),
+      end_at: val("cal-end") || null,
+      document_id: val("cal-doc") ? parseInt(val("cal-doc"), 10) : null,
+      description: val("cal-desc") || "",
+    }),
+  });
+  toast("Event created", "success");
+  if ($("cal-title")) $("cal-title").value = "";
+  if ($("cal-desc")) $("cal-desc").value = "";
   renderCalendar();
 }
+
 async function delEvent(id) {
   await apiFetch(`/calendar/${id}`, { method: "DELETE" });
+  toast("Event deleted");
   renderCalendar();
 }
 
