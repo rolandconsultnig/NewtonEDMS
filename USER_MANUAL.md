@@ -45,11 +45,6 @@ Users can enroll their device's built-in biometric sensors (such as **Windows He
 4. When prompted by your operating system or browser, confirm with your fingerprint, face scan, or security key PIN.
 5. Your passkey is instantly registered and bound to your hardware.
 
-#### How to Sign In with Biometrics:
-1. On the login screen, click **"Sign in with Biometrics / Passkey"**.
-2. Perform the biometric verification prompt on your device.
-3. You will immediately be authenticated into your workspace without typing any password.
-
 ### 2.2 Security Hardening & Breach Protection
 - **Account Lockout Protection**: Automatic exponential lockout after 5 consecutive failed authentication attempts.
 - **Path Traversal Protection**: Multi-layer inspection blocking directory escape attempts (e.g. `../` and `%2e%2e`).
